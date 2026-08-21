@@ -40,6 +40,26 @@ Form
 			singleVariable:					true
 		}
 
+		AssignedVariablesList
+		{
+			name:							"subgroup"
+			title:							qsTr("Subgroup")
+			id:								subgroup
+			singleVariable:					true
+			allowedColumns:					["nominal"]
+			info:							qsTr("The subgroup each observation belongs to.")
+		}
+
+		AssignedVariablesList
+		{
+			name:							"stage"
+			title:							qsTr("Stage")
+			id:								stage
+			singleVariable:					true
+			allowedColumns:					["nominal"]
+			info:							qsTr("A column that splits the analysis into multiple stages.")
+		}
+
 	}
 
 
