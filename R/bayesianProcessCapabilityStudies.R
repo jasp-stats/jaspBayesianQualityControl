@@ -1066,8 +1066,11 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   if (!options[[base]] || !is.null(jaspResults[[base]]))
     return()
 
+  singlePanel <- options[[paste0(base, "PanelLayout")]] != "multiplePanels"
   w <- 400
-  plt <- createJaspPlot(title = gettext("Sequential Analysis Point Estimate"), width = 3*w, height = 2*w,
+  plt <- createJaspPlot(title = gettext("Sequential Analysis Point Estimate"),
+                        width  = w * (if (singlePanel) 1 else 3),
+                        height = w * (if (singlePanel) 1 else 2),
                         position = position,
                         dependencies = jaspDeps(c(
                           .bpcsDefaultDeps(),
@@ -1100,8 +1103,11 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   if (!options[[base]] || !is.null(jaspResults[[base]]))
     return()
 
+  singlePanel <- options[[paste0(base, "PanelLayout")]] != "multiplePanels"
   w <- 400
-  plt <- createJaspPlot(title = gettext("Sequential Analysis Interval Estimate"), width = 3*w, height = 2*w,
+  plt <- createJaspPlot(title = gettext("Sequential Analysis Interval Estimate"),
+                        width  = w * (if (singlePanel) 1 else 3),
+                        height = w * (if (singlePanel) 1 else 2),
                         position = position,
                         dependencies = jaspDeps(c(
                           .bpcsDefaultDeps(),
