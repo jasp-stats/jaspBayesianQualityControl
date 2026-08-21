@@ -1253,12 +1253,12 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   ggplot2::sec_axis(identity, breaks = rightBreaks, labels = rightLabels)
 }
 
-.bpcsSequentialYScale <- function(lower, upper, gridLines, categoryNames, custom, addInfo) {
+.bpcsSequentialYScale <- function(plotted, gridLines, categoryNames, custom, addInfo) {
   if (custom) {
     # probabilities, so the axis is fixed and unrelated to the process criteria
     leftBreaks <- jaspGraphs::getPrettyAxisBreaks(c(0, 1))
   } else {
-    observedRange <- range(lower, upper, na.rm = TRUE)
+    observedRange <- range(plotted, na.rm = TRUE)
     if (!all(is.finite(observedRange))) {
       observedRange <- c(0, 1)
     }
@@ -1337,10 +1337,10 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   # get y scales per facet
   if (single_panel) {
-    y_breaks_per_scale <- .bpcsSequentialYScale(tb$lower, tb$upper, gridLines, categoryNames, custom, add_additional_info)
+    y_breaks_per_scale <- .bpcsSequentialYScale(c(tb$mean, if (has_ci) c(tb$lower, tb$upper)), gridLines, categoryNames, custom, add_additional_info)
   } else {
     y_breaks_per_scale <- tapply(tb, tb$metric, \(x) {
-      .bpcsSequentialYScale(x$lower, x$upper, gridLines, categoryNames, custom, add_additional_info)
+      .bpcsSequentialYScale(c(x$mean, if (has_ci) c(x$lower, x$upper)), gridLines, categoryNames, custom, add_additional_info)
     }, simplify = FALSE)
   }
 
