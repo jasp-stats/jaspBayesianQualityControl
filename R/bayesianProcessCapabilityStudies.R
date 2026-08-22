@@ -1046,10 +1046,15 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
           densityPlot$layers[[i]]$show.legend <- FALSE
       }
 
+      # qc only facets (and so only titles the panel with the metric name) when more than one
+      # metric is shown; give a single metric a matching title of its own.
+      metricTitle <- if (length(selectedMetrics) == 1) selectedMetrics else NULL
+
       jaspPlt$plotObject <- densityPlot +
-        ggplot2::labs(fill = gettext("Region")) +
+        ggplot2::labs(title = metricTitle, fill = gettext("Region")) +
         jaspGraphs::geom_rangeframe() +
-        jaspGraphs::themeJaspRaw(legend.position = "right")
+        jaspGraphs::themeJaspRaw(legend.position = "right") +
+        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
 
 
     }
@@ -1089,8 +1094,12 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   if (!options[[base]] || !is.null(jaspResults[[base]]))
     return()
 
-  w <- 400
-  plt <- createJaspPlot(title = gettext("Sequential Analysis Point Estimate"), width = 3*w, height = 2*w,
+  # plot size only shrinks when there is a single metric to show; combining several metrics
+  # into one panel (or facetting several) both need the larger canvas
+  smallPlot <- length(.bpcsGetSelectedMetrics(options)) <= 1
+  plt <- createJaspPlot(title = gettext("Sequential Analysis Point Estimate"),
+                        width  = if (smallPlot) 600 else 1200,
+                        height = if (smallPlot) 400 else 800,
                         position = position,
                         dependencies = jaspDeps(c(
                           .bpcsDefaultDeps(),
@@ -1418,6 +1427,10 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     facet <- ggplot2::facet_wrap(~metric, scales = scales)
   }
 
+  # a single metric has no facet strip to say which one it is, and doesn't need a legend either
+  singleMetricTitle <- if (length(selectedMetrics) == 1L) as.character(selectedMetrics) else NULL
+  showLegend        <- single_panel && length(selectedMetrics) > 1L
+
   ggplot2::ggplot(tb, ggplot2::aes(x = .data$n, y = .data$mean, group = .data$metric,
                                    color = .data$metric, fill = .data$metric)) +
     gridLinesLayer +
@@ -1425,13 +1438,15 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     ggplot2::geom_line(linewidth = 1) +
     facet + scale_facet + scale_x +
     ggplot2::labs(
+      title = singleMetricTitle,
       x     = gettext("Number of observations"),
       y     = y_title,
       color = gettext("Metric"),
       fill  = gettext("Metric")
     ) +
     jaspGraphs::geom_rangeframe(sides = sides) +
-    jaspGraphs::themeJaspRaw(legend.position = if (single_panel) "right" else "none") +
+    jaspGraphs::themeJaspRaw(legend.position = if (showLegend) "right" else "none") +
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) +
     extraTheme
 
 }
