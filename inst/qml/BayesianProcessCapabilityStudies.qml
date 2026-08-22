@@ -597,13 +597,29 @@ Form
 
 		title: qsTr("Prior and Posterior Inference")
 
-		Common.PlotLayout {}
+		Common.PlotLayout
+		{
+			id: posteriorDistributionPlot
+		}
 
 		Common.PlotLayout
 		{
+			id: priorDistributionPlot
 			baseName: "priorDistributionPlot"
 			baseLabel: qsTr("Prior distribution")
 			hasPrior: false
+		}
+
+		Group
+		{
+			CheckBox
+			{
+				enabled:	posteriorDistributionPlot.checked || priorDistributionPlot.checked
+				name:		"showProcessCriteria"
+				label:		qsTr("Show process criteria")
+				checked:	true
+				info:		qsTr("Shade the plot background by capability classification (incapable, capable, satisfactory, excellent, super).")
+			}
 		}
 
 	}

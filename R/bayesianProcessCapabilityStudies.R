@@ -955,25 +955,31 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   if (!options[[base]] || !is.null(jaspResults[[base]]))
     return()
 
-  singlePanel <- options[[paste0(base, "PanelLayout")]] != "multiplePanels"
+  selectedMetrics <- .bpcsGetSelectedMetrics(options)
+  # content layout (facetted vs combined into one panel), set by the "Layout" radio button
+  singlePanel     <- options[[paste0(base, "PanelLayout")]] != "multiplePanels"
+  # plot size only shrinks when there is a single metric to show; combining several metrics
+  # into one panel (or facetting several) both need the larger canvas
+  smallPlot       <- length(selectedMetrics) <= 1
 
   isPost <- base == "posteriorDistributionPlot"
   summaryObject <- if (isPost) fit$summaryObject else priorFit$summaryObject
   # only if the user asked for it and the prior is available
   priorSummaryObject <- if (isPost && options[[paste0(base, "PriorDistribution")]] && .bpcsPriorIsUsable(priorFit)) priorFit$summaryObject else NULL
 
-  plotWidth <- 400 * (if (singlePanel) 1 else 3)
+  plotWidth <- if (smallPlot) 600 else 1200
 
   jaspPlt <- createJaspPlot(
     title = if (isPost) gettext("Posterior Distribution") else gettext("Prior Distribution"),
     width  = plotWidth,
-    height = 400 * (if (singlePanel) 1 else 2),
+    height = if (smallPlot) 400 else 800,
     position = position,
     dependencies = jaspDeps(
       options = c(
         .bpcsDefaultDeps(),
         # .bpcsPosteriorPlotDeps(options),
-        .bpcsPlotLayoutDeps(base, hasType = FALSE)
+        .bpcsPlotLayoutDeps(base, hasType = FALSE),
+        "showProcessCriteria", .bpcsProcessCriteriaDeps()
       )
     )
   )
@@ -991,9 +997,6 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   tryCatch({
 
-    # Get selected metrics
-    selectedMetrics <- .bpcsGetSelectedMetrics(options)
-
     if (length(selectedMetrics) == 0) {
       NULL
     } else {
@@ -1008,7 +1011,12 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
       panelWidth     <- plotWidth / nColumns
       annotationSize <- min(3 * panelWidth / 400, jaspGraphs::graphOptions("fontsize") / ggplot2::.pt)
 
-      jaspPlt$plotObject <- qc::plot_density(
+      # the regions follow the user's process criteria; only parsed when they are shown, so invalid
+      # criteria do not break the plot otherwise (qc's defaults are unused while show_regions is FALSE)
+      showRegions <- options[["showProcessCriteria"]]
+      criteria    <- if (showRegions) .bpcsProcessCriteria(options)
+
+      densityPlot <- qc::plot_density(
         summaryObject,
         what = selectedMetrics,
         point_estimate     = if (options[[paste0(base, "IndividualPointEstimate")]]) options[[paste0(base, "IndividualPointEstimateType")]] else "none",
@@ -1023,10 +1031,25 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
         axes               = options[[paste0(base, "Axes")]],
         axes_custom        = .bpcsGetCustomAxisLimits(options, base),
         priorSummaryObject = priorSummaryObject,
-        textsize           = annotationSize
-      ) +
+        textsize           = annotationSize,
+        show_regions       = showRegions,
+        region_cutoffs     = if (showRegions) criteria$values                    else qc::default_region_cutoffs(),
+        region_colors      = if (showRegions) .bpcsOverviewRegionColors(criteria) else qc::default_region_colors()
+      )
+
+      # drop the per-metric colour legend for the density line(s) directly on the layer:
+      # guides(color = "none") / scale_*(guide = "none") depend on ggplot2's guide-merging
+      # machinery, which was not reliably suppressing this legend in JASP's rendering
+      # pipeline. show.legend is a plain layer property, stable across ggplot2 versions.
+      for (i in seq_along(densityPlot$layers)) {
+        if (inherits(densityPlot$layers[[i]]$geom, "GeomLine"))
+          densityPlot$layers[[i]]$show.legend <- FALSE
+      }
+
+      jaspPlt$plotObject <- densityPlot +
+        ggplot2::labs(fill = gettext("Region")) +
         jaspGraphs::geom_rangeframe() +
-        jaspGraphs::themeJaspRaw()
+        jaspGraphs::themeJaspRaw(legend.position = "right")
 
 
     }
@@ -1066,11 +1089,8 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   if (!options[[base]] || !is.null(jaspResults[[base]]))
     return()
 
-  singlePanel <- options[[paste0(base, "PanelLayout")]] != "multiplePanels"
   w <- 400
-  plt <- createJaspPlot(title = gettext("Sequential Analysis Point Estimate"),
-                        width  = w * (if (singlePanel) 1 else 3),
-                        height = w * (if (singlePanel) 1 else 2),
+  plt <- createJaspPlot(title = gettext("Sequential Analysis Point Estimate"), width = 3*w, height = 2*w,
                         position = position,
                         dependencies = jaspDeps(c(
                           .bpcsDefaultDeps(),
@@ -1103,11 +1123,8 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   if (!options[[base]] || !is.null(jaspResults[[base]]))
     return()
 
-  singlePanel <- options[[paste0(base, "PanelLayout")]] != "multiplePanels"
   w <- 400
-  plt <- createJaspPlot(title = gettext("Sequential Analysis Interval Estimate"),
-                        width  = w * (if (singlePanel) 1 else 3),
-                        height = w * (if (singlePanel) 1 else 2),
+  plt <- createJaspPlot(title = gettext("Sequential Analysis Interval Estimate"), width = 3*w, height = 2*w,
                         position = position,
                         dependencies = jaspDeps(c(
                           .bpcsDefaultDeps(),
