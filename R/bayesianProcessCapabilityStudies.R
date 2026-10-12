@@ -255,7 +255,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 }
 
 .bpcsMuPriorFromOptions <- function(options) {
-  if (options$priorSettings == "default") {
+  if (options[["priorSettings"]] == "default") {
     return("Jeffreys_mu")
   } else {
     comp <- .bpcsPriorComponentByName(options, "mean")
@@ -264,7 +264,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 }
 
 .bpcsSigmaPriorFromOptions <- function(options) {
-  if (options$priorSettings == "default") {
+  if (options[["priorSettings"]] == "default") {
     return("Jeffreys_sigma")
   } else {
     comp <- .bpcsPriorComponentByName(options, "sigma")
@@ -283,7 +283,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 }
 
 .bpcsPriorHelper <- function(options) {
-  if (options$priorSettings == "default") {
+  if (options[["priorSettings"]] == "default") {
     if (options[["capabilityStudyType"]] == "normalCapabilityAnalysis") {
       return("DCSI")
     }
@@ -377,7 +377,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 # Whether the displayed prior is proper. Jeffreys components (and the default Jeffreys prior of the
 # Student-t model) are improper, as is a uniform component without finite bounds.
 .bpcsPriorIsProper <- function(options) {
-  if (options$priorSettings == "default")
+  if (options[["priorSettings"]] == "default")
     return(identical(.bpcsDistributionFromOptions(options), "normal"))
 
   components <- tryCatch(.bpcsActivePriorComponents(options), error = function(e) NULL)
@@ -1240,9 +1240,9 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   nseq <- seq(nfrom, nto, by = nby)
   estimates <- array(NA, c(6, 5, length(nseq)))
 
-  hasCustom <- options$sequentialAnalysisPointIntervalPlot
-  customBounds <- c(options$sequentialAnalysisPointIntervalPlotTypeLower,
-                    options$sequentialAnalysisPointIntervalPlotTypeUpper)
+  hasCustom <- options[["sequentialAnalysisPointIntervalPlot"]]
+  customBounds <- c(options[["sequentialAnalysisPointIntervalPlotTypeLower"]],
+                    options[["sequentialAnalysisPointIntervalPlotTypeUpper"]])
 
   keys <- c("mean", "median", "lower", "upper", "custom")
   dimnames(estimates) <- list(list(), keys, list())
@@ -1370,8 +1370,8 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     pointEstimateName <- "custom"
     add_additional_info <- FALSE
     y_title <- gettextf("P(%1$.3f \u2264 x \u2264 %2$.3f)",
-                       options$sequentialAnalysisPointIntervalPlotTypeLower,
-                       options$sequentialAnalysisPointIntervalPlotTypeUpper)
+                       options[["sequentialAnalysisPointIntervalPlotTypeLower"]],
+                       options[["sequentialAnalysisPointIntervalPlotTypeUpper"]])
     gridLines <- numeric()
     categoryNames <- character()
   } else {
