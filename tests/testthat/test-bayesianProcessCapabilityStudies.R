@@ -395,6 +395,29 @@ test_that("process overview probability lengths match the configured thresholds"
 })
 
 test_that("the sequential criteria axis supports any number of regions", {
+test_that("overview caches are keyed on the boundaries, not on the region labels", {
+  local_mocked_bindings(
+    createJaspState = function(object, ...) { state <- new.env(); state$object <- object; state },
+    jaspDeps        = function(...) NULL,
+    .package        = "jaspBayesianQualityControl"
+  )
+  jaspResults <- new.env()
+  calls   <- 0L
+  compute <- function() { calls <<- calls + 1L; list(value = calls) }
+  cached  <- function(boundaries) {
+    jaspBayesianQualityControl:::.bpcsCachedForBoundaries(jaspResults, "key", boundaries, deps = character(), compute = compute)
+  }
+
+  expect_equal(cached(c(1, 1.33))$value, 1)
+  # same boundaries, e.g. only a label was renamed: the stored result is reused
+  expect_equal(cached(c(1, 1.33))$value, 1)
+  expect_equal(calls, 1L)
+  # a moved boundary recomputes and replaces the stored result
+  expect_equal(cached(c(1, 1.5))$value, 2)
+  expect_equal(cached(c(1, 1.5))$value, 2)
+  expect_equal(calls, 2L)
+})
+
   axisFor <- function(gridLines, labels) {
     jaspBayesianQualityControl:::.bpcsSequentialCriteriaAxis(c(0, 3), gridLines, labels)
   }

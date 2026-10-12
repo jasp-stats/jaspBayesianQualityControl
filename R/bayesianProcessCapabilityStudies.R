@@ -533,17 +533,36 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 }
 
 # The sequential fits and the reference-prior fit are cached separately, and both store results for
-# every metric, so changing the overview metric or threshold reuses all fits.
+# every metric, so changing the overview metric or threshold reuses all fits. They are keyed on the
+# numeric region boundaries instead of the processCriteria option: renaming a region must not refit.
 .bpcsOverviewData <- function(jaspResults, dataset, options, fit, criteria) {
-  sequential <- jaspResults[["processOverviewSequentialData"]] %setOrRetrieve% (
-    .bpcsComputeOverviewSequentialData(dataset, options, criteria) |>
-      createJaspState(jaspDeps(c(.bpcsOverviewBinningDeps(), .bpcsStateDeps(), .bpcsProcessCriteriaDeps())))
+  sequential <- .bpcsCachedForBoundaries(
+    jaspResults, "processOverviewSequentialData", criteria$values,
+    deps    = c(.bpcsOverviewBinningDeps(), .bpcsStateDeps()),
+    compute = function() .bpcsComputeOverviewSequentialData(dataset, options, criteria)
   )
-  reference <- jaspResults[["processOverviewReferenceData"]] %setOrRetrieve% (
-    .bpcsComputeOverviewReferenceData(dataset, options, fit, criteria) |>
-      createJaspState(jaspDeps(c("processOverviewReferencePrior", .bpcsStateDeps(), .bpcsProcessCriteriaDeps())))
+  reference <- .bpcsCachedForBoundaries(
+    jaspResults, "processOverviewReferenceData", criteria$values,
+    deps    = c("processOverviewReferencePrior", .bpcsStateDeps()),
+    compute = function() .bpcsComputeOverviewReferenceData(dataset, options, fit, criteria)
   )
   list(sequential = sequential, sensitivity = reference)
+}
+
+# State that survives option changes (via deps) and is additionally recomputed when the region
+# boundaries it was computed for differ from the current ones.
+.bpcsCachedForBoundaries <- function(jaspResults, key, boundaries, deps, compute) {
+  state <- jaspResults[[key]]
+  if (!is.null(state) && identical(unname(state$object[["boundaries"]]), unname(boundaries)))
+    return(state$object)
+
+  result <- compute()
+  result[["boundaries"]] <- boundaries
+  if (is.null(state))
+    jaspResults[[key]] <- createJaspState(result, jaspDeps(deps))
+  else
+    state$object <- result
+  result
 }
 
 .bpcsOverviewThresholdIndex <- function(options, criteria) {
