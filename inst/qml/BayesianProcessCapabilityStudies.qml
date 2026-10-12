@@ -618,7 +618,7 @@ Form
 				name:		"showProcessCriteria"
 				label:		qsTr("Show process criteria")
 				checked:	true
-				info:		qsTr("Shade the plot background by capability classification (incapable, capable, satisfactory, excellent, super).")
+				info:		qsTr("Shade the plot background by the process criteria regions defined above.")
 			}
 		}
 

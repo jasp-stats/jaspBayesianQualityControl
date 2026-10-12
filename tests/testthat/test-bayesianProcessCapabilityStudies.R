@@ -53,6 +53,7 @@ context("[Bayesian Quality Control] Bayesian Process Capability Study")
     upperSpecificationLimitValue      = 1,
     timeSeriesPlot                    = FALSE,
     processCriteria                   = .bpcsProcessCriteria(),
+    showProcessCriteria               = TRUE,
     processOverview                   = FALSE,
     processOverviewMetric             = "Cpk",
     # the threshold dropdown defaults to its second entry, the second boundary
@@ -394,7 +395,6 @@ test_that("process overview probability lengths match the configured thresholds"
   )
 })
 
-test_that("the sequential criteria axis supports any number of regions", {
 test_that("overview caches are keyed on the boundaries, not on the region labels", {
   local_mocked_bindings(
     createJaspState = function(object, ...) { state <- new.env(); state$object <- object; state },
@@ -418,6 +418,7 @@ test_that("overview caches are keyed on the boundaries, not on the region labels
   expect_equal(calls, 2L)
 })
 
+test_that("the sequential criteria axis supports any number of regions", {
   axisFor <- function(gridLines, labels) {
     jaspBayesianQualityControl:::.bpcsSequentialCriteriaAxis(c(0, 3), gridLines, labels)
   }
