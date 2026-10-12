@@ -13,6 +13,21 @@
 
 ---
 
+# jaspBayesianQualityControl (development version)
+
+## Added
+* Bayesian process capability study: a standalone time series plot with the specification limits and target.
+* Bayesian process capability study: a four-panel process overview (time series, prior and posterior distributions, sequential exceedance probability, and reference-prior sensitivity), with a selectable metric, threshold, reference prior, and sequential update binning.
+* Bayesian process capability study: configurable process criteria with any number (at least two) of labelled regions, used by the interval table, the process overview, and the sequential analysis plots.
+
+## Changed
+* Bayesian process capability study: the Student-t model is now estimated with MCMC using the MCMC settings, and its custom priors (including the degrees of freedom) are taken from the Student-t prior list.
+
+## Fixed
+* Bayesian process capability study: an improper prior no longer prevents the posterior outputs; the prior-based plots explain why they are unavailable.
+
+---
+
 # jaspModuleTemplate (development version)
 
 ## Added

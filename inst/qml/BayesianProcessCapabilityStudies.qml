@@ -20,42 +20,6 @@ import "./common" as Common
 
 Form
 {
-	function sortIntervalValues() {
-
-		var values = [
-			interval1.displayValue,
-			interval2.displayValue,
-			interval3.displayValue,
-			interval4.displayValue
-		]
-		values.sort(function(a, b) { return a - b })
-		interval1.value = values[0]
-		interval2.value = values[1]
-		interval3.value = values[2]
-		interval4.value = values[3]
-		interval1b.value = values[0]
-		interval2b.value = values[1]
-		interval3b.value = values[2]
-		interval4b.value = values[3]
-	}
-	function sortIntervalValuesb() {
-
-		var values = [
-			interval1b.displayValue,
-			interval2b.displayValue,
-			interval3b.displayValue,
-			interval4b.displayValue
-		]
-		values.sort(function(a, b) { return a - b })
-		interval1.value = values[0]
-		interval2.value = values[1]
-		interval3.value = values[2]
-		interval4.value = values[3]
-		interval1b.value = values[0]
-		interval2b.value = values[1]
-		interval3b.value = values[2]
-		interval4b.value = values[3]
-	}
 	columns:	 2
 
 	VariablesForm
@@ -185,73 +149,411 @@ Form
 
 			}
 
+			CheckBox
+			{
+				name: "timeSeriesPlot"
+				label: qsTr("Time series plot")
+				checked: false
+			}
 		}
 
 		Group
 		{
-
 			title: qsTr("Process Criteria")
-			GridLayout
+			Layout.columnSpan: 2
+			Layout.fillWidth: true
+			preferredWidth: form.availableWidth
+
+			ComponentsList
 			{
-				// title: qsTr("Process Criteria")
-				columns: 5
-				columnSpacing: 2
-				rowSpacing: jaspTheme.rowGridSpacing / 3
-				id: intervalRow
-				property int dbWidth: 50
-				property int txtWidth: 100
+				name: "processCriteria"
+				id: processCriteria
 
-				// Row 0: Headers
-				Label {text: qsTr("Left bound")}
-				Item{}
-				Label {text: qsTr("Classification")}
-				Item{}
-				Label {text: qsTr("Right bound")}
+				preferredWidth: form.availableWidth - jaspTheme.groupContentPadding
 
-				// Row 1: Incapable
-				Item{}
-				Item{}
-				TextField { name: "intervalLabel1"; defaultValue: qsTr("Incapable"); fieldWidth: intervalRow.txtWidth}
-				Label { text: "<"; }
-				DoubleField { name: "interval1"; id: interval1; fieldWidth: intervalRow.dbWidth; defaultValue: 1.00; onEditingFinished: sortIntervalValues() }
+				// Rows get their own key: the right bound and label must come from their controls,
+				// with "upper" or "label" as the key the row key would replace the control values.
+				optionKey: "region"
 
-				// Row 2: Capable
-				DoubleField { name: "interval1b";id: interval1b; fieldWidth: intervalRow.dbWidth; editable: true; value: interval1.value; onEditingFinished: {sortIntervalValuesb()}  }
-				Label { text: "<"; }
-				TextField { name: "intervalLabel2"; defaultValue: qsTr("Capable"); fieldWidth: intervalRow.txtWidth}
-				Label { text: "≤"; }
-				DoubleField { name: "interval2"; id: interval2; fieldWidth: intervalRow.dbWidth; defaultValue: 1.33; onEditingFinished: sortIntervalValues() }
+				addItemManually: true
+				minimumItems: 2
+				// JASP restores the cached controls of a deleted row when a new row gets the same key,
+				// so every added row gets a fresh key
+				newItemValue: "region" + Date.now()
 
-				// Row 3: Satisfactory
-				DoubleField { name: "interval2b"; id: interval2b; fieldWidth: intervalRow.dbWidth; editable: true; value: interval2.value; onEditingFinished: {sortIntervalValuesb()}  }
-				Label { text: "<"; }
-				TextField { name: "intervalLabel3"; defaultValue: qsTr("Satisfactory"); fieldWidth: intervalRow.txtWidth}
-				Label { text: "≤"; }
-				DoubleField { name: "interval3"; id: interval3; fieldWidth: intervalRow.dbWidth; defaultValue: 1.50; onEditingFinished: sortIntervalValues() }
+				defaultValues:
+				[
+					{ label: qsTr("Incapable"),    upper: 1.00 },
+					{ label: qsTr("Capable"),      upper: 1.33 },
+					{ label: qsTr("Satisfactory"), upper: 1.50 },
+					{ label: qsTr("Excellent"),    upper: 2.00 },
+					{ label: qsTr("Super"),        upper: Infinity }
+				]
 
-				// Row 4: Excellent
-				DoubleField { name: "interval3b"; id: interval3b; fieldWidth: intervalRow.dbWidth; editable: true; value: interval3.value; onEditingFinished: {sortIntervalValuesb()}  }
-				Label { text: "<"; }
-				TextField { name: "intervalLabel4"; defaultValue: qsTr("Excellent"); fieldWidth: intervalRow.txtWidth}
-				Label { text: "≤"; }
-				DoubleField { name: "interval4"; id: interval4; fieldWidth: intervalRow.dbWidth; defaultValue: 2.00; onEditingFinished: sortIntervalValues() }
+				headerLabels:
+				[
+					{
+						lower: qsTr("Left bound"),
+						label: qsTr("Classification"),
+						upper: qsTr("Right bound")
+					}
+				]
 
-				// Row 5: Super
-				DoubleField { name: "interval4b"; id: interval4b; fieldWidth: intervalRow.dbWidth; editable: true; value: interval4.value; onEditingFinished: {sortIntervalValuesb()}  }
-				Label { text: ">"; }
-				TextField { name: "intervalLabel5"; defaultValue: qsTr("Super"); fieldWidth: intervalRow.txtWidth}
-				Item{}
-				Item{}
+				// Only the right bounds define the regions: each left bound shows the right bound of the row
+				// above, the first left bound and the last right bound are open-ended. When a row is deleted
+				// JASP neither updates rowIndex nor destroys that row's controls, and a deleted row whose
+				// controls still change writes a stray entry into the option. So positions are looked up in
+				// the list, and values are only written explicitly to the rows that are still in the list.
+				property int rowRevision: 0
+				property int thresholdRevision: 0
+
+				function safeRowAt(index)
+				{
+					if (index < 0 || index >= count)
+						return null
+
+					try			{ return rowAt(index) }
+					catch (e)	{ return null }
+				}
+
+				function rowIndexOf(row)
+				{
+					for (var i = 0; i < count; ++i)
+					{
+						if (safeRowAt(i) === row)
+							return i
+					}
+
+					return -1
+				}
+
+				function interiorBoundaries()
+				{
+					var values = []
+
+					for (var i = 0; i < count - 1; ++i)
+					{
+						var row = safeRowAt(i)
+
+						if (row)
+							values.push(Number(row.upperValue))
+					}
+
+					return values
+				}
+
+				function overviewThresholdValues()
+				{
+					return interiorBoundaries().filter(function(value) {
+						return isFinite(value)
+					}).map(function(value) {
+						return {
+							label: String(value),
+							value: String(value)
+						}
+					})
+				}
+
+				function refreshThresholds()
+				{
+					var oldIndex = processOverviewThreshold.currentIndex
+
+					thresholdRevision++
+
+					Qt.callLater(function() {
+						var newCount = overviewThresholdValues().length
+
+						if (newCount > 0)
+							processOverviewThreshold.currentIndex = Math.min(Math.max(oldIndex, 0), newCount - 1)
+					})
+				}
+
+				// After rows are added or deleted: every right bound except the last must be finite and the
+				// last one open-ended. A row that used to be last gets a boundary above its left bound.
+				function normalizeBoundaries()
+				{
+					rowRevision++
+
+					var previous = -Infinity
+
+					for (var i = 0; i < count; ++i)
+					{
+						var row = safeRowAt(i)
+
+						if (!row)
+							continue
+
+						if (i === count - 1)
+						{
+							if (isFinite(Number(row.upperValue)))
+								row.upperValue = Infinity
+						}
+						else if (!isFinite(Number(row.upperValue)))
+						{
+							row.upperValue = isFinite(previous) ? previous + 1 : 1
+						}
+
+						previous = Number(row.upperValue)
+					}
+
+					synchronizeLeftBounds()
+					refreshThresholds()
+					validateCriteria()
+				}
+
+				function synchronizeLeftBounds()
+				{
+					for (var i = 1; i < count; ++i)
+					{
+						var row = safeRowAt(i), previous = safeRowAt(i - 1)
+
+						if (row && previous && Number(row.lowerValue) !== Number(previous.upperValue))
+							row.lowerValue = previous.upperValue
+					}
+				}
+
+				// Editing a right bound keeps the boundaries sorted, the labels stay in place.
+				function boundaryEdited()
+				{
+					var values = interiorBoundaries()
+
+					values.sort(function(a, b) {
+						return a - b
+					})
+
+					for (var i = 0; i < values.length; ++i)
+					{
+						var row = safeRowAt(i)
+
+						if (row && Number(row.upperValue) !== values[i])
+							row.upperValue = values[i]
+					}
+
+					synchronizeLeftBounds()
+					refreshThresholds()
+					validateCriteria()
+				}
+
+				// Equal boundaries and empty labels are rejected here; a control error prevents
+				// the analysis from running until the criteria are valid again.
+				function validateCriteria()
+				{
+					for (var i = 0; i < count; ++i)
+					{
+						var row = safeRowAt(i)
+
+						if (!row)
+							continue
+
+						var boundaryError = ""
+						var previous = safeRowAt(i - 1)
+						if (i > 0 && i < count - 1 && previous && !(Number(row.upperValue) > Number(previous.upperValue)))
+							boundaryError = qsTr("Each boundary must be larger than the previous one.")
+
+						var labelError = ""
+						if (String(row.labelValue).trim() === "")
+							labelError = qsTr("Each region needs a classification label.")
+
+						row.showErrors(boundaryError, labelError)
+					}
+				}
+
+				onCountChanged:
+				{
+					newItemValue = "region" + Date.now()
+					Qt.callLater(normalizeBoundaries)
+				}
+
+				Component.onCompleted: Qt.callLater(normalizeBoundaries)
+
+				rowComponent: Row
+				{
+					id: criterionRow
+
+					property alias lowerValue: lowerBound.value
+					property alias upperValue: upperBound.value
+					property alias labelValue: labelField.value
+					property alias upperField: upperBound
+					property alias labelField: labelField
+
+					property int position:
+					{
+						var revision = processCriteria.rowRevision
+						return processCriteria.rowIndexOf(criterionRow)
+					}
+					property bool isFirstRow: position === 0
+					property bool isLastRow:  position === processCriteria.count - 1
+
+					function showErrors(boundaryError, labelError)
+					{
+						if (boundaryError !== "")
+							upperBound.addControlErrorPermanent(boundaryError)
+						else
+							upperBound.clearControlError()
+
+						if (labelError !== "")
+							labelField.addControlErrorPermanent(labelError)
+						else
+							labelField.clearControlError()
+					}
+
+					// Left bound: shows the right bound of the row above (set by the list), hidden but kept
+					// for the header alignment in the first row
+					DoubleField
+					{
+						id: lowerBound
+						name: "lower"
+						defaultValue: -Infinity
+						opacity: criterionRow.isFirstRow ? 0 : 1
+						enabled: false
+
+						negativeValues: true
+						decimals: 9
+						fieldWidth: 80
+					}
+
+					Label
+					{
+						text: criterionRow.isFirstRow ? "" : "<"
+						width: 10
+					}
+
+					TextField
+					{
+						id: labelField
+						name: "label"
+						startValue: qsTr("Region %1").arg(rowIndex + 1)
+						fieldWidth: 120
+						// deferred: the typed text is only stored in value after this handler
+						onEditingFinished: Qt.callLater(processCriteria.validateCriteria)
+					}
+
+					Label
+					{
+						text: criterionRow.isLastRow ? "" : "≤"
+						width: 10
+					}
+
+					// Right bound, hidden for the last row
+					DoubleField
+					{
+						id: upperBound
+						name: "upper"
+
+						opacity: criterionRow.isLastRow ? 0 : 1
+						enabled: !criterionRow.isLastRow
+
+						defaultValue: Infinity
+						negativeValues: true
+						decimals: 9
+						fieldWidth: 80
+
+						onEditingFinished: Qt.callLater(processCriteria.boundaryEdited)
+					}
+				}
+			}
+
+			CheckBox
+			{
+				name: "processOverview"
+				id: processOverview
+				label: qsTr("Process overview")
+				info: qsTr("Show a four-panel overview of the process.")
+
+				DropDown
+				{
+					name: "processOverviewMetric"
+					label: qsTr("Capability metric")
+					values:
+					[
+						{ label: "Cp",  value: "Cp"  },
+						{ label: "Cpu", value: "Cpu" },
+						{ label: "Cpl", value: "Cpl" },
+						{ label: "Cpk", value: "Cpk" },
+						{ label: "Cpc", value: "Cpc" },
+						{ label: "Cpm", value: "Cpm" }
+					]
+					indexDefaultValue: 3
+				}
+
+				DropDown
+				{
+					name: "processOverviewThreshold"
+					id: processOverviewThreshold
+					label: qsTr("Threshold")
+					indexDefaultValue: 1
+
+					values:
+					{
+						var revision = processCriteria.thresholdRevision
+						return processCriteria.overviewThresholdValues()
+					}
+				}
+
+				DropDown
+				{
+					name: "processOverviewReferencePrior"
+					label: qsTr("Reference prior")
+					info: qsTr("Prior used for the sensitivity analysis. The DCSI and unit information priors are only available for the normal distribution.")
+					// qc supports the DCSI and unit information priors only for the normal distribution
+					values: capabilityStudyType.value === "normalCapabilityAnalysis"
+						? [
+							{ label: qsTr("DCSI"),             value: "DCSI" },
+							{ label: qsTr("Jeffreys"),         value: "Jeffreys" },
+							{ label: qsTr("Unit information"), value: "unit_information" }
+						]
+						: [
+							{ label: qsTr("Jeffreys"),         value: "Jeffreys" }
+						]
+					indexDefaultValue: 0
+				}
+
+				RadioButtonGroup
+				{
+					name: "processOverviewBinning"
+					title: qsTr("Sequential updates")
+					info: qsTr("Each update refits the model to all observations up to that point. The first update always uses the first 3 observations and the last update uses all observations.")
+
+					RadioButton
+					{
+						value: "noBins"
+						label: qsTr("No. bins")
+						checked: true
+						childrenOnSameRow: true
+						IntegerField
+						{
+							name: "processOverviewNumberOfBins"
+							defaultValue: 5
+							min: 1
+						}
+					}
+
+					RadioButton
+					{
+						value: "observationsPerBin"
+						label: qsTr("No. observations per bin")
+						info: qsTr("Number of observations added between consecutive updates, starting after the first 3 observations.")
+						childrenOnSameRow: true
+						IntegerField
+						{
+							name: "processOverviewObservationsPerBin"
+							defaultValue: 10
+							min: 1
+						}
+					}
+
+					RadioButton
+					{
+						value: "perObservation"
+						label: qsTr("Per observation")
+					}
+				}
 			}
 		}
 
-	// }
+		// }
 
-	// Section
-	// {
-	// 	title: qsTr("Prior distributions")
 
-	// }
 
 	Section
 	{
@@ -260,7 +562,7 @@ Form
 		{
 			name: "intervalTable"
 			label: qsTr("Interval table")
-			info: qsTr("Show the posterior probabilities of the interval specified with the input on the right. Note that the input is automatically sorted and that the first and last fields are always negative and positive infinity.")
+			info: qsTr("Show posterior probabilities for the process criteria defined above.")
 		}
 		CIField
 		{

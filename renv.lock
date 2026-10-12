@@ -1120,6 +1120,25 @@
       ],
       "Hash": "627d6993db1043703c0b084fa432f21f"
     },
+    "patchwork": {
+      "Package": "patchwork",
+      "Version": "1.3.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "cli",
+        "farver",
+        "ggplot2",
+        "grDevices",
+        "graphics",
+        "grid",
+        "gtable",
+        "rlang",
+        "stats",
+        "utils"
+      ],
+      "Hash": "97fc0338dd42af55d170478dfc4c0c03"
+    },
     "pillar": {
       "Package": "pillar",
       "Version": "1.11.1",
@@ -1304,7 +1323,7 @@
       "RemoteUsername": "FBartos",
       "RemoteRepo": "qc",
       "RemoteRef": "main",
-      "RemoteSha": "4204e03b4f9e885dbc50bc142a5ff3ec6637281f",
+      "RemoteSha": "b1e81c02353390a9839b2b3ea70c941c1a0fd7ac",
       "Requirements": [
         "BH",
         "BayesTools",
@@ -1324,7 +1343,7 @@
         "tibble",
         "vctrs"
       ],
-      "Hash": "dda836a23ca2b95e52f339c34fbace88"
+      "Hash": "fc288174de66b002c6cd4e76e486b20e"
     },
     "ragg": {
       "Package": "ragg",
@@ -1361,13 +1380,11 @@
     },
     "renv": {
       "Package": "renv",
-      "Version": "1.0.7",
-      "Source": "Repository",
+      "Version": "1.3.1",
+      "OS_type": null,
+      "NeedsCompilation": "no",
       "Repository": "CRAN",
-      "Requirements": [
-        "utils"
-      ],
-      "Hash": "397b7b2a265bc5a7a06852524dabae20"
+      "Source": "Repository"
     },
     "rlang": {
       "Package": "rlang",

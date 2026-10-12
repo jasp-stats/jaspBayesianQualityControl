@@ -15,10 +15,13 @@ Imports:
   BayesTools,
   ggh4x,
   ggplot2,
+  grDevices,
   HDInterval,
   jaspBase,
   jaspGraphs,
+  patchwork,
   qc,
+  rlang,
   stats,
   tibble
 Suggests:
