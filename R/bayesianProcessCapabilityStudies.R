@@ -1326,7 +1326,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     has_ci <- FALSE
     pointEstimateName <- "custom"
     add_additional_info <- FALSE
-    y_title <- gettextf("P(%1$.3f ≤ x ≤ %2$.3f)",
+    y_title <- gettextf("P(%1$.3f \u2264 x \u2264 %2$.3f)",
                        options$sequentialAnalysisPointIntervalPlotTypeLower,
                        options$sequentialAnalysisPointIntervalPlotTypeUpper)
     gridLines <- numeric()
