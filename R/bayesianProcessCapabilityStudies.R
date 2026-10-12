@@ -1232,7 +1232,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   n <- nrow(dataset)
   if (!is.finite(n) || n < 3L) {
-    stop("Sequential analysis requires at least 3 observations.", call. = FALSE)
+    stop(gettext("Sequential analysis requires at least 3 observations."), call. = FALSE)
   }
   nfrom <- 3L
   nto   <- n
@@ -1253,16 +1253,19 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   prior <- .bpcsPriorHelper(options)
   n_failed <- 0L
+  firstError <- NULL
   for (i in seq_along(nseq)) {
 
     x_i <- x[1:nseq[i]]
     fit_i <- tryCatch(
       .bpcsFit(x_i, options, prior = prior),
-      error = function(e) NULL
+      error = function(e) e
     )
 
-    if (is.null(fit_i)) {
+    if (inherits(fit_i, "error")) {
       n_failed <- n_failed + 1L
+      if (is.null(firstError))
+        firstError <- list(n = nseq[i], message = .bpcsShortErrorMessage(fit_i))
       jaspBase::progressbarTick()
       next
     }
@@ -1282,9 +1285,12 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   if (n_failed > 0L && n_failed / length(nseq) > 0.1) {
     stop(
-      sprintf(
-        "%d of %d sequential fits failed (%.0f%%). Cannot render plot.",
-        n_failed, length(nseq), 100 * n_failed / length(nseq)
+      paste(
+        gettextf(
+          "%1$d of %2$d sequential fits failed (%3$.0f%%). Cannot render plot.",
+          n_failed, length(nseq), 100 * n_failed / length(nseq)
+        ),
+        .bpcsFirstFailureText(firstError, width = 1000L)
       ),
       call. = FALSE
     )

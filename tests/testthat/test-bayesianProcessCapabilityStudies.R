@@ -570,6 +570,22 @@ test_that("failed sequential checkpoints are stored as missing", {
   )
 }
 
+test_that("sequential analysis reports why too many fits failed", {
+  options <- .bpcsOptions()
+  x <- .bpcsDataset()[1:12, , drop = FALSE]
+  realFit <- jaspBayesianQualityControl:::.bpcsFit
+
+  local_mocked_bindings(.bpcsFit = function(x, ...) {
+    if (length(x) >= 5) stop("injected failure")
+    realFit(x, ...)
+  }, .package = "jaspBayesianQualityControl")
+
+  expect_error(
+    jaspBayesianQualityControl:::.bpcsComputeSequentialAnalysis(x, options, fit = NULL),
+    "8 of 10 sequential fits failed.*First failure at 5 observations: injected failure"
+  )
+})
+
 test_that("the sequential panel tolerates up to 10% failed checkpoints without bridging gaps", {
   failed <- rep(FALSE, 10)
   failed[4] <- TRUE
