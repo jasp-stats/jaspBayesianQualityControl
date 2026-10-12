@@ -548,18 +548,22 @@ test_that("failed sequential checkpoints are stored as missing", {
 
   expect_equal(sequential$sampleSizes, 3:12)
   expect_equal(which(sequential$failed), c(3L, 10L))
+  # the first failure is kept so the plot can say what went wrong
+  expect_equal(sequential$firstError$n, 5)
+  expect_equal(sequential$firstError$message, "injected failure")
   expect_true(all(is.na(sequential$probabilities[["Cpk"]][c(3, 10), ])))
   expect_false(anyNA(sequential$probabilities[["Cpk"]][-c(3, 10), ]))
 })
 
-.bpcsSequentialPanel <- function(failed) {
+.bpcsSequentialPanel <- function(failed, firstError = NULL) {
   n <- length(failed)
   probabilities <- matrix(seq(0.1, 0.9, length.out = n), nrow = n, ncol = 1L)
   probabilities[failed, ] <- NA
   sequential <- list(
     sampleSizes   = seq(3, length.out = n),
     probabilities = list(Cpk = probabilities),
-    failed        = failed
+    failed        = failed,
+    firstError    = firstError
   )
   jaspBayesianQualityControl:::.bpcsMakeOverviewSequentialPanel(
     sequential, "Cpk", 1L, priorFit = NULL, criteria = NULL, title = "C"
@@ -584,6 +588,33 @@ test_that("the sequential panel is unavailable above 10% failed checkpoints", {
 
   expect_length(panel$layers, 1L)
   expect_match(panel$layers[[1L]]$aes_params$label, "2 of 10 sequential updates failed")
+})
+
+test_that("the first failed update and its error are reported", {
+  firstError <- list(n = 6, message = "injected failure")
+  expected   <- "First failure at 6 observations: injected failure"
+
+  failed <- rep(FALSE, 10)
+  failed[4] <- TRUE
+  expect_match(.bpcsSequentialPanel(failed, firstError)$labels$caption, expected)
+
+  failed[c(2, 5)] <- TRUE
+  expect_match(.bpcsSequentialPanel(failed, firstError)$layers[[1L]]$aes_params$label, expected)
+
+  # results cached before the error was recorded have no firstError
+  expect_no_match(.bpcsSequentialPanel(failed)$layers[[1L]]$aes_params$label, "First failure")
+})
+
+test_that("error messages are reduced to their first non-empty line", {
+  short <- jaspBayesianQualityControl:::.bpcsShortErrorMessage
+
+  expect_equal(short(simpleError("first line\nsecond line")), "first line")
+  expect_equal(short(simpleError("\n  padded  \nnext")), "padded")
+  expect_equal(short(simpleError("")), "unknown error")
+
+  long <- short(simpleError(strrep("a", 500)))
+  expect_equal(nchar(long), 150)
+  expect_match(long, "\\.\\.\\.$")
 })
 
 test_that("a failed final checkpoint is reported instead of labelling an earlier value as final", {

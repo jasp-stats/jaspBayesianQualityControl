@@ -682,6 +682,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   probabilities <- stats::setNames(lapply(metrics, function(.)
     matrix(NA_real_, nrow = length(sampleSizes), ncol = length(criteria$values))), metrics)
   failed <- logical(length(sampleSizes))
+  firstError <- NULL
   x <- dataset[[1L]]
   prior <- .bpcsPriorHelper(options)
 
@@ -690,11 +691,13 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     # fitting and extracting the probabilities form one checkpoint, it is only stored if both succeed
     checkpoint <- tryCatch(
       .bpcsAllExceedanceProbabilities(.bpcsFit(x[seq_len(sampleSizes[i])], options, prior = prior), criteria$values),
-      error = function(e) NULL
+      error = function(e) e
     )
 
-    if (is.null(checkpoint)) {
+    if (inherits(checkpoint, "error")) {
       failed[i] <- TRUE
+      if (is.null(firstError))
+        firstError <- list(n = sampleSizes[i], message = .bpcsShortErrorMessage(checkpoint))
     } else {
       for (metricName in metrics)
         probabilities[[metricName]][i, ] <- checkpoint[[metricName]]
@@ -705,8 +708,28 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   list(
     sampleSizes   = sampleSizes,
     probabilities = probabilities,
-    failed        = failed
+    failed        = failed,
+    firstError    = firstError
   )
+}
+
+# First line of an error message, shortened so it fits in a plot caption.
+.bpcsShortErrorMessage <- function(e, maxChars = 150L) {
+  lines   <- trimws(strsplit(conditionMessage(e), "\n", fixed = TRUE)[[1L]])
+  message <- lines[nzchar(lines)][1L]
+  if (is.na(message))
+    return(gettext("unknown error"))
+  if (nchar(message) > maxChars)
+    message <- paste0(substr(message, 1L, maxChars - 3L), "...")
+  message
+}
+
+# Which sequential update failed first and why, wrapped for a plot caption. Empty without failures.
+.bpcsFirstFailureText <- function(firstError, width = 60L) {
+  if (is.null(firstError))
+    return(character())
+  text <- gettextf("First failure at %1$d observations: %2$s", as.integer(firstError$n), firstError$message)
+  paste(strwrap(text, width = width), collapse = "\n")
 }
 
 .bpcsComputeOverviewReferenceData <- function(dataset, options, fit, criteria) {
@@ -844,11 +867,12 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   failed <- sequential$failed
   nFailed <- sum(failed)
   nTotal <- length(failed)
+  failureText <- .bpcsFirstFailureText(sequential$firstError)
   if (nFailed / nTotal > 0.1)
-    return(.bpcsUnavailablePanel(title, gettextf(
+    return(.bpcsUnavailablePanel(title, paste(c(gettextf(
       "%1$d of %2$d sequential updates failed (more than 10%%),\nso the sequential probabilities cannot be shown.",
       nFailed, nTotal
-    )))
+    ), failureText), collapse = "\n\n")))
 
   overTimeData <- data.frame(
     observation = sequential$sampleSizes,
@@ -859,7 +883,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   captions <- character()
   if (nFailed > 0L)
-    captions <- c(captions, gettextf("%1$d of %2$d sequential updates failed and are omitted.", nFailed, nTotal))
+    captions <- c(captions, gettextf("%1$d of %2$d sequential updates failed and are omitted.", nFailed, nTotal), failureText)
   if (failed[nTotal])
     captions <- c(captions, gettext("The update with all observations failed, so the final probability is unavailable."))
 
