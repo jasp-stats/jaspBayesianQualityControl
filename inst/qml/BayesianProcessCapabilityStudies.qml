@@ -14,6 +14,7 @@
 
 import QtQuick
 import QtQuick.Layouts
+import JASP
 import JASP.Controls
 
 import "./common" as Common
@@ -24,175 +25,141 @@ Form
 
 	VariablesForm
 	{
-		id:									variablesFormLongFormat
+		preferredHeight: jaspTheme.defaultVariablesFormHeight / 2
+		id:									availableVariables
 
 		AvailableVariablesList
 		{
-			name:							"variablesFormLongFormat"
+			name:							"availableVariables"
 		}
 
 		AssignedVariablesList
 		{
-			name:							"measurementLongFormat"
+			name:							"measurement"
 			title:							qsTr("Measurement")
-			id:								measurementLongFormat
+			id:								measurement
 			allowedColumns:					["scale"]
 			singleVariable:					true
-		}
-
-		AssignedVariablesList
-		{
-			name:							"subgroup"
-			title:							qsTr("Subgroup")
-			id:								subgroup
-			singleVariable:					true
-			allowedColumns:					["nominal"]
-			info:							qsTr("The subgroup each observation belongs to.")
-		}
-
-		AssignedVariablesList
-		{
-			name:							"stage"
-			title:							qsTr("Stage")
-			id:								stage
-			singleVariable:					true
-			allowedColumns:					["nominal"]
-			info:							qsTr("A column that splits the analysis into multiple stages.")
 		}
 
 	}
 
 
-	// Section
-	// {
-	// 	title: qsTr("Process capability options")
+	Group
+	{
+		Layout.alignment: Qt.AlignTop
 
 		Group
 		{
-			title:					qsTr("Type of data distribution")
+			title: qsTr("Capability Specification")
 
-
-			RadioButtonGroup
+			FormulaField
 			{
-				name: 					"capabilityStudyType"
-				id: 					capabilityStudyType
+				name: "capabilitySpecificationLowerLimit"
+				label: qsTr("Lower limit")
+				defaultValue: ""
+				inputType: "string"
+				parseDefaultValue: false
+				info: qsTr("Lower acceptable process value. Leave empty until the specification is known.")
+			}
 
-				RadioButton
-				{
-					name: 				"normalCapabilityAnalysis"
-					id : 				normalCapabilityAnalysis
-					label: 				qsTr("Normal distribution")
-					checked: 			true
-				}
+			FormulaField
+			{
+				name: "capabilitySpecificationTargetValue"
+				label: qsTr("Target value")
+				defaultValue: ""
+				inputType: "string"
+				parseDefaultValue: false
+				info: qsTr("Desired process value. Leave empty until the target is known.")
+			}
 
-				RadioButton
-				{
-					name: 				"tCapabilityAnalysis"
-					id : 				tCapabilityAnalysis
-					label: 				qsTr("Student's t-distribution")
-					// checked: 			true
-				}
-
+			FormulaField
+			{
+				name: "capabilitySpecificationUpperLimit"
+				label: qsTr("Upper limit")
+				defaultValue: ""
+				inputType: "string"
+				parseDefaultValue: false
+				info: qsTr("Upper acceptable process value. Leave empty until the specification is known.")
 			}
 		}
 
-		Group
+		CheckBox
 		{
-			columns: 2
-			title: qsTr("Metrics")
-			info: qsTr("Select the process capability metrics to report.")
-			CheckBox { name: "Cp";   label: qsTr("Cp");  checked: true }
-			CheckBox { name: "Cpu";	 label: qsTr("Cpu"); checked: true }
-			CheckBox { name: "Cpl";	 label: qsTr("Cpl"); checked: true }
-			CheckBox { name: "Cpk";	 label: qsTr("Cpk"); checked: true }
-			CheckBox { name: "Cpc";	 label: qsTr("Cpc"); checked: true }
-			CheckBox { name: "Cpm";	 label: qsTr("Cpm"); checked: true }
+			name: "timeSeriesPlot"
+			label: qsTr("Time series plot")
+			checked: false
 		}
+	}
+
+	Group
+	{
+		Layout.alignment: Qt.AlignTop
+		Layout.leftMargin: jaspTheme.contentMargin
 
 		Group
 		{
-			title: 							qsTr("Capability Study")
-
-			CheckBox
+			DropDown
 			{
-				name: 						"lowerSpecificationLimit"
-				label: 						qsTr("Lower specification limit")
-				id:							lowerSpecificationLimit
-				childrenOnSameRow:			true
-				enableChildrenOnChecked:	false
-
-				DoubleField
+				name: "dataDistribution"
+				id: dataDistribution
+				label: qsTr("Data distribution")
+				info: qsTr("Distribution of the process measurements.")
+				values: [
+					{ label: qsTr("Normal"),	value: "normal" },
+					{ label: qsTr("Student-t"), value: "studentT" }
+				]
+				onCurrentValueChanged:
 				{
-					name: 					"lowerSpecificationLimitValue"
-					id:						lowerSpecificationLimitValue
-					negativeValues:			true
-					defaultValue:			-1
-					decimals:				9
-				}
-
-			}
-
-			CheckBox
-			{
-				name: 						"target"
-				label: 						qsTr("Target value")
-				id:							target
-				childrenOnSameRow:			true
-				enableChildrenOnChecked:	false
-
-				DoubleField
-				{
-					name: 					"targetValue"
-					id:						targetValue
-					negativeValues:			true
-					defaultValue:			0
-					decimals:				9
+					if (currentValue !== "normal")
+						priorDistributionsCustomSpecification.currentIndex = 0
+					if (currentValue === "studentT" && priorDistribution.currentValue === "unitInformation")
+					priorDistribution.currentIndex = 0
 				}
 			}
 
-			CheckBox
+			DropDown
 			{
-				name: 						"upperSpecificationLimit"
-				label: 						qsTr("Upper specification limit")
-				id:							upperSpecificationLimit
-				childrenOnSameRow:			true
-				enableChildrenOnChecked:	false
-
-				DoubleField
-				{
-					name: 					"upperSpecificationLimitValue"
-					id:						upperSpecificationLimitValue
-					negativeValues:			true
-					defaultValue:			1
-					decimals:				9
-				}
-
+				name: "priorDistribution"
+				id: priorDistribution
+				label: qsTr("Prior distribution")
+				info: qsTr("Use the package default, a unit information prior, Jeffreys priors, or custom priors. The default is DCSI for numerical integration and Jeffreys for MCMC. Unit information is available with numerical integration.")
+				values: [
+					{ label: advancedEstimationMethod.value === "integration" ? qsTr("Default (DCSI)") : qsTr("Default (Jeffreys)"), value: "default" },
+					{ label: qsTr("Unit information"),		value: "unitInformation" },
+					{ label: qsTr("Jeffreys"),				value: "jeffreys" },
+					{ label: qsTr("Custom"), value: "custom" }
+				]
+				enabledOptions: [true, advancedEstimationMethod.value === "integration", true, true]
 			}
 
-			CheckBox
+			DoubleField
 			{
-				name: "timeSeriesPlot"
-				label: qsTr("Time series plot")
-				checked: false
+				name: "priorDistributionUnitInformationValue"
+				visible: priorDistribution.currentValue === "unitInformation"
+				label: qsTr("Units of information")
+				defaultValue: 1
+				min: 0
+				inclusive: JASP.None
+				decimals: 3
+				info: qsTr("Information weight for the unit information prior. One reproduces the unit information prior; larger values strengthen it and values between zero and one weaken it.")
 			}
 		}
 
 		Group
 		{
 			title: qsTr("Process Criteria")
-			Layout.columnSpan: 2
-			Layout.fillWidth: true
-			preferredWidth: form.availableWidth
 
 			ComponentsList
 			{
 				name: "processCriteria"
 				id: processCriteria
+				preferredWidth: implicitWidth
 
-				preferredWidth: form.availableWidth - jaspTheme.groupContentPadding
+				addBorder: false
 
 				// Rows get their own key: the right bound and label must come from their controls,
-				// with "upper" or "label" as the key the row key would replace the control values.
+				// with "rightBound" or "classification" as the key the row key would replace the control values.
 				optionKey: "region"
 
 				addItemManually: true
@@ -203,19 +170,19 @@ Form
 
 				defaultValues:
 				[
-					{ label: qsTr("Incapable"),    upper: 1.00 },
-					{ label: qsTr("Capable"),      upper: 1.33 },
-					{ label: qsTr("Satisfactory"), upper: 1.50 },
-					{ label: qsTr("Excellent"),    upper: 2.00 },
-					{ label: qsTr("Super"),        upper: Infinity }
+					{ classification: qsTr("Incapable"),    rightBound: 1.00 },
+					{ classification: qsTr("Capable"),      rightBound: 1.33 },
+					{ classification: qsTr("Satisfactory"), rightBound: 1.50 },
+					{ classification: qsTr("Excellent"),    rightBound: 2.00 },
+					{ classification: qsTr("Super"),        rightBound: Infinity }
 				]
 
 				headerLabels:
 				[
 					{
-						lower: qsTr("Left bound"),
-						label: qsTr("Classification"),
-						upper: qsTr("Right bound")
+						leftBound: qsTr("Left bound"),
+						classification: qsTr("Classification"),
+						rightBound: qsTr("Right bound")
 					}
 				]
 
@@ -276,7 +243,7 @@ Form
 
 				function refreshThresholds()
 				{
-					var oldIndex = processOverviewThreshold.currentIndex
+					var oldIndex = statisticsProcessOverviewThreshold.currentIndex
 
 					thresholdRevision++
 
@@ -284,7 +251,7 @@ Form
 						var newCount = overviewThresholdValues().length
 
 						if (newCount > 0)
-							processOverviewThreshold.currentIndex = Math.min(Math.max(oldIndex, 0), newCount - 1)
+							statisticsProcessOverviewThreshold.currentIndex = Math.min(Math.max(oldIndex, 0), newCount - 1)
 					})
 				}
 
@@ -368,11 +335,11 @@ Form
 						var boundaryError = ""
 						var previous = safeRowAt(i - 1)
 						if (i > 0 && i < count - 1 && previous && !(Number(row.upperValue) > Number(previous.upperValue)))
-							boundaryError = qsTr("Each boundary must be larger than the previous one.")
+							boundaryError = qsTr("Each Right bound must be larger than the previous one.")
 
 						var labelError = ""
 						if (String(row.labelValue).trim() === "")
-							labelError = qsTr("Each region needs a classification label.")
+							labelError = qsTr("Each region needs a Classification.")
 
 						row.showErrors(boundaryError, labelError)
 					}
@@ -422,7 +389,7 @@ Form
 					DoubleField
 					{
 						id: lowerBound
-						name: "lower"
+						name: "leftBound"
 						defaultValue: -Infinity
 						opacity: criterionRow.isFirstRow ? 0 : 1
 						enabled: false
@@ -441,7 +408,7 @@ Form
 					TextField
 					{
 						id: labelField
-						name: "label"
+						name: "classification"
 						startValue: qsTr("Region %1").arg(rowIndex + 1)
 						fieldWidth: 120
 						// deferred: the typed text is only stored in value after this handler
@@ -458,7 +425,7 @@ Form
 					DoubleField
 					{
 						id: upperBound
-						name: "upper"
+						name: "rightBound"
 
 						opacity: criterionRow.isLastRow ? 0 : 1
 						enabled: !criterionRow.isLastRow
@@ -472,125 +439,150 @@ Form
 					}
 				}
 			}
-
-			CheckBox
-			{
-				name: "processOverview"
-				id: processOverview
-				label: qsTr("Process overview")
-				info: qsTr("Show a four-panel overview of the process.")
-
-				DropDown
-				{
-					name: "processOverviewMetric"
-					label: qsTr("Capability metric")
-					values:
-					[
-						{ label: "Cp",  value: "Cp"  },
-						{ label: "Cpu", value: "Cpu" },
-						{ label: "Cpl", value: "Cpl" },
-						{ label: "Cpk", value: "Cpk" },
-						{ label: "Cpc", value: "Cpc" },
-						{ label: "Cpm", value: "Cpm" }
-					]
-					indexDefaultValue: 3
-				}
-
-				DropDown
-				{
-					name: "processOverviewThreshold"
-					id: processOverviewThreshold
-					label: qsTr("Threshold")
-					indexDefaultValue: 1
-
-					values:
-					{
-						var revision = processCriteria.thresholdRevision
-						return processCriteria.overviewThresholdValues()
-					}
-				}
-
-				DropDown
-				{
-					name: "processOverviewReferencePrior"
-					label: qsTr("Reference prior")
-					info: qsTr("Prior used for the sensitivity analysis. The DCSI and unit information priors are only available for the normal distribution.")
-					// qc supports the DCSI and unit information priors only for the normal distribution
-					values: capabilityStudyType.value === "normalCapabilityAnalysis"
-						? [
-							{ label: qsTr("DCSI"),             value: "DCSI" },
-							{ label: qsTr("Jeffreys"),         value: "Jeffreys" },
-							{ label: qsTr("Unit information"), value: "unit_information" }
-						]
-						: [
-							{ label: qsTr("Jeffreys"),         value: "Jeffreys" }
-						]
-					indexDefaultValue: 0
-				}
-
-				RadioButtonGroup
-				{
-					name: "processOverviewBinning"
-					title: qsTr("Sequential updates")
-					info: qsTr("Each update refits the model to all observations up to that point. The first update always uses the first 3 observations and the last update uses all observations.")
-
-					RadioButton
-					{
-						value: "noBins"
-						label: qsTr("No. bins")
-						checked: true
-						childrenOnSameRow: true
-						IntegerField
-						{
-							name: "processOverviewNumberOfBins"
-							defaultValue: 5
-							min: 1
-						}
-					}
-
-					RadioButton
-					{
-						value: "observationsPerBin"
-						label: qsTr("No. observations per bin")
-						info: qsTr("Number of observations added between consecutive updates, starting after the first 3 observations.")
-						childrenOnSameRow: true
-						IntegerField
-						{
-							name: "processOverviewObservationsPerBin"
-							defaultValue: 10
-							min: 1
-						}
-					}
-
-					RadioButton
-					{
-						value: "perObservation"
-						label: qsTr("Per observation")
-					}
-				}
-			}
 		}
-
-		// }
-
-
+	}
 
 	Section
 	{
-		title: qsTr("Tables")
+		title:	qsTr("Statistics")
+
+
+		Group
+		{
+
+			Group
+			{
+				columns: 2
+				title: qsTr("Metrics")
+				info: qsTr("Select the process capability metrics to report.")
+				CheckBox { name: "statisticsMetricsCp";   label: qsTr("Cp");  checked: false }
+				CheckBox { name: "statisticsMetricsCpu";	 label: qsTr("Cpu"); checked: false }
+				CheckBox { name: "statisticsMetricsCpl";	 label: qsTr("Cpl"); checked: false }
+				CheckBox { name: "statisticsMetricsCpk";	 label: qsTr("Cpk"); checked: true }
+				CheckBox { name: "statisticsMetricsCpc";	 label: qsTr("Cpc"); checked: false }
+				CheckBox { name: "statisticsMetricsCpm";	 label: qsTr("Cpm"); checked: false }
+			}
+
+			CheckBox
+			{
+				name: "statisticsIntervalTable"
+				label: qsTr("Interval table")
+				info: qsTr("Show posterior probabilities for the process criteria defined above.")
+			}
+
+			CheckBox
+			{
+				name: "statisticsParameterEstimates"
+				label: qsTr("Parameter estimates")
+				enabled: advancedEstimationMethod.value === "mcmc" || priorPredictive.checked || posteriorPredictive.checked
+				info: qsTr("Show parameter estimates, credible intervals, effective sample sizes, R-hat, and sampler diagnostics for MCMC, including additional predictive MCMC fits.")
+			}
+
+			CIField
+			{
+				name: "statisticsCredibleInterval"
+				label: qsTr("Credible interval")
+				info: qsTr("Width of the credible intervals in the Capability Table and Parameter estimates table.")
+			}
+		}
+
 		CheckBox
 		{
-			name: "intervalTable"
-			label: qsTr("Interval table")
-			info: qsTr("Show posterior probabilities for the process criteria defined above.")
-		}
-		CIField
-		{
-			name: "credibleIntervalWidth"
-			label: qsTr("Credible interval")
-			info: qsTr("Width of the credible interval used for the posterior distribution in the Capability table.")
+			name: "statisticsProcessOverview"
+			id: statisticsProcessOverview
+			label: qsTr("Process overview")
+			info: qsTr("Show a four-panel overview of the process.")
+
+			DropDown
+			{
+				name: "statisticsProcessOverviewCapabilityMetric"
+				label: qsTr("Capability metric")
+				values:
+				[
+					{ label: "Cp",  value: "Cp"  },
+					{ label: "Cpu", value: "Cpu" },
+					{ label: "Cpl", value: "Cpl" },
+					{ label: "Cpk", value: "Cpk" },
+					{ label: "Cpc", value: "Cpc" },
+					{ label: "Cpm", value: "Cpm" }
+				]
+				indexDefaultValue: 3
+			}
+
+			DropDown
+			{
+				name: "statisticsProcessOverviewThreshold"
+				id: statisticsProcessOverviewThreshold
+				label: qsTr("Threshold")
+				indexDefaultValue: 1
+
+				values:
+				{
+					var revision = processCriteria.thresholdRevision
+					return processCriteria.overviewThresholdValues()
+				}
+			}
+
+			DropDown
+			{
+				name: "statisticsProcessOverviewSensitivityAnalysisPrior"
+				label: qsTr("Sensitivity analysis prior")
+				info: qsTr("Prior used for the sensitivity analysis. The DCSI and unit information priors are only available with numerical integration.")
+				values: advancedEstimationMethod.value === "integration"
+					? [
+						{ label: qsTr("DCSI"),             value: "DCSI" },
+						{ label: qsTr("Jeffreys"),         value: "Jeffreys" },
+						{ label: qsTr("Unit information"), value: "unit_information" }
+					]
+					: [
+						{ label: qsTr("Jeffreys"),         value: "Jeffreys" }
+					]
+				indexDefaultValue: 0
+			}
+
+			RadioButtonGroup
+			{
+				name: "statisticsProcessOverviewSequentialUpdates"
+				title: qsTr("Sequential updates")
+				info: qsTr("Each update refits the model to all observations up to that point. With one bin, there is one update using all observations. With multiple bins or observations added per bin, updates start with the first 3 observations and always include all observations in the final update.")
+
+				RadioButton
+				{
+					value: "bins"
+					label: qsTr("Bins")
+					checked: true
+					childrenOnSameRow: true
+					IntegerField
+					{
+						name: "statisticsProcessOverviewSequentialUpdatesBinsValue"
+						defaultValue: 5
+						min: 1
+					}
+				}
+
+				RadioButton
+				{
+					value: "observationsPerBin"
+					label: qsTr("Observations per bin")
+					info: qsTr("Number of observations added between consecutive updates, starting after the first 3 observations.")
+					childrenOnSameRow: true
+					IntegerField
+					{
+						name: "statisticsProcessOverviewSequentialUpdatesObservationsPerBinValue"
+						defaultValue: 10
+						min: 1
+					}
+				}
+
+				RadioButton
+				{
+					value: "perObservation"
+					label: qsTr("Per observation")
+				}
+			}
 		}
 	}
+
 
 	Section
 	{
@@ -599,23 +591,37 @@ Form
 
 		Common.PlotLayout
 		{
-			id: posteriorDistributionPlot
+			id: priorAndPosteriorInferencePriorDistribution
+			baseName: "priorAndPosteriorInferencePriorDistribution"
+			baseLabel: qsTr("Prior distribution")
+			hasPrior: false
 		}
 
 		Common.PlotLayout
 		{
-			id: priorDistributionPlot
-			baseName: "priorDistributionPlot"
-			baseLabel: qsTr("Prior distribution")
-			hasPrior: false
+			id: priorAndPosteriorInferencePosteriorDistribution
+		}
+
+		Common.PlotPanelLayout
+		{
+			id: inferenceLayout
+			baseName: "priorAndPosteriorInference"
+			enabled: priorAndPosteriorInferencePosteriorDistribution.checked || priorAndPosteriorInferencePriorDistribution.checked
+		}
+
+		Common.PlotAxes
+		{
+			baseName: "priorAndPosteriorInference"
+			enabled: priorAndPosteriorInferencePosteriorDistribution.checked || priorAndPosteriorInferencePriorDistribution.checked
+			multiplePanels: inferenceLayout.value === "multiplePanels"
 		}
 
 		Group
 		{
 			CheckBox
 			{
-				enabled:	posteriorDistributionPlot.checked || priorDistributionPlot.checked
-				name:		"showProcessCriteria"
+				enabled:	priorAndPosteriorInferencePosteriorDistribution.checked || priorAndPosteriorInferencePriorDistribution.checked
+				name:		"priorAndPosteriorInferenceShowProcessCriteria"
 				label:		qsTr("Show process criteria")
 				checked:	true
 				info:		qsTr("Shade the plot background by the process criteria regions defined above.")
@@ -634,40 +640,48 @@ Form
 			baseName: "sequentialAnalysisPointEstimatePlot"
 			baseLabel: qsTr("Point estimate plot")
 			hasPrior: false
+			hasMode: false
+			pointEstimateChecked: true
 		}
 
 		Common.PlotLayout
 		{
 			id: sequentialAnalysisIntervalEstimatePlot
-			baseName: "sequentialAnalysisPointIntervalPlot"
+			baseName: "sequentialAnalysisIntervalEstimatePlot"
 			baseLabel: qsTr("Interval estimate plot")
 			hasPrior: false
 			hasEstimate: false
 			hasCi: false
-			hasType: true
+			hasInterval: true
+		}
+
+		Common.PlotPanelLayout
+		{
+			id: sequentialLayout
+			baseName: "sequentialAnalysis"
+			enabled: sequentialAnalysisPointEstimatePlot.checked || sequentialAnalysisIntervalEstimatePlot.checked
+		}
+
+		Common.PlotAxes
+		{
+			baseName: "sequentialAnalysis"
+			allowNegativeY: true
+			enabled: sequentialAnalysisPointEstimatePlot.checked || sequentialAnalysisIntervalEstimatePlot.checked
+			multiplePanels: sequentialLayout.value === "multiplePanels"
 		}
 
 		Group
 		{
 			CheckBox
 			{
-				enabled:	sequentialAnalysisPointEstimatePlot.checked || sequentialAnalysisIntervalEstimatePlot.checked
+					enabled:	sequentialAnalysisPointEstimatePlot.checked
 				id:			sequentialAnalysisAdditionalInfo
-				name:		"sequentialAnalysisPlotAdditionalInfo"
+				name:		"sequentialAnalysisShowProcessCriteria"
 				label:		qsTr("Show process criteria")
 				checked:	true
-				info:		qsTr("Add a secondary right axis with condition bounds for the process")
+				info:		qsTr("Label the secondary right axis of the Point estimate plot with the Process Criteria classifications and boundaries.")
 			}
 
-			CheckBox
-			{
-				// TODO:
-				enabled:	sequentialAnalysisPointEstimatePlot.checked || sequentialAnalysisIntervalEstimatePlot.checked
-				name:		"sequentialAnalysisUpdatingTable"
-				label:		qsTr("Posterior updating table")
-				checked:	false
-				info:		qsTr("Show the data from the sequential analysis in a table. Will show both the information for the point estimate and interval estimate plots, if both are selected.")
-			}
 		}
 	}
 
@@ -678,87 +692,155 @@ Form
 
 		Common.PlotLayout
 		{
-			baseName: "posteriorPredictiveDistributionPlot"
-			baseLabel: qsTr("Posterior predictive distribution")
+			baseName: "priorAndPosteriorPredictivePlotsPriorPredictiveDistribution"
+			id: priorPredictive
+			baseLabel: qsTr("Prior predictive distribution")
 			hasPrior: false
-			hasAxes: false
-			hasPanels: false
 		}
 
 		Common.PlotLayout
 		{
-			baseName: "priorPredictiveDistributionPlot"
-			baseLabel: qsTr("Prior predictive distribution")
+			baseName: "priorAndPosteriorPredictivePlotsPosteriorPredictiveDistribution"
+			id: posteriorPredictive
+			baseLabel: qsTr("Posterior predictive distribution")
 			hasPrior: false
-			hasAxes: false
-			hasPanels: false
 		}
-
 	}
 
 
 	Section
 	{
-		title: qsTr("Prior Distributions")
-
-		// TODO: this dropdown should just show the same GUI as the custom one
-		// but disable e.g., the DropDown itself and instead show the prior
-		// also disable all truncation for non-custom ones
-		// NOTE: the above is done, but default values cannot be set yet.
+		title: qsTr("Prior Distributions (Custom)")
+		columns: 1
+		enabled: priorDistribution.currentValue === "custom"
+		onEnabledChanged: expanded = enabled
 
 		DropDown
 		{
-			id: priorSettings
-			name: "priorSettings"
-			label: qsTr("Prior distributions")
-			values:
-			[
-				{label: qsTr("Default"),					value: "default"},
-				{label: qsTr("Informed conjugate"),			value: "conjugate"},
-				// {label: qsTr("Informed conjugate"),			value: "weaklyInformativeConjugate"},
-				{label: qsTr("Informed uniform"),			value: "weaklyInformativeUniform"},
-				{label: qsTr("Custom informative"),			value: "customInformative"},
+			name: "priorDistributionsCustomSpecification"
+			id: priorDistributionsCustomSpecification
+			label: qsTr("Specification")
+			values: [
+				{ label: qsTr("Independent"), value: "independent" },
+				{ label: qsTr("Dependent"), value: "dependent" }
 			]
+			enabledOptions: [true, dataDistribution.currentValue === "normal" && advancedEstimationMethod.value === "integration"]
+			info: qsTr("Independent priors specify a separate distribution for each parameter. The dependent Normal–Inverse-Gamma prior specifies the mean conditional on the process variance. It is available for normal data with numerical integration.")
 		}
 
 		Common.Priors
 		{
+			id: independentPriors
+			visible: priorDistributionsCustomSpecification.currentValue === "independent"
+			width1: Math.max(70 * preferencesModel.uiScale, dependentMeanLabel.implicitWidth)
+			priorType: dataDistribution.currentValue === "normal" ? "normalModel" : "tModel"
+			hasTruncation: true
+		}
 
-			// visible: priorSettings.currentValue === "customInformative"
-			priorType: capabilityStudyType.value === "normalCapabilityAnalysis" ? "normalModel" : "tModel"
+		ColumnLayout
+		{
+			id: dependentPriors
+			visible: priorDistributionsCustomSpecification.currentValue === "dependent"
+			Layout.fillWidth: true
+			spacing: 0
+			property real parameterWidth: independentPriors.width1 + 12 * preferencesModel.uiScale
 
-			hasTruncation: priorSettings.currentValue === "customInformative"
-			hasParameters: priorSettings.currentValue !== "default"
-			visible:       priorSettings.currentValue !== "default"
+			RowLayout
+			{
+				Layout.fillWidth: true
+				Layout.leftMargin: jaspTheme.contentMargin
+				Layout.rightMargin: jaspTheme.contentMargin
+				Label { text: qsTr("Parameter"); Layout.preferredWidth: dependentPriors.parameterWidth; Layout.minimumWidth: dependentPriors.parameterWidth }
+				Label { text: qsTr("Distribution"); Layout.preferredWidth: independentPriors.width2 }
+				Label { text: qsTr("Parameters"); Layout.preferredWidth: independentPriors.width3; Layout.fillWidth: true }
+			}
 
-			dropDownValuesMap: {
-				switch (priorSettings.currentValue) {
-					case "default":
-						return {
-							"mean": 	[{ label: qsTr("Jeffreys"),				value: "jeffreys"}],
-							"sigma": 	[{ label: qsTr("Jeffreys"),				value: "jeffreys"}],
-							"df": 		[{ label: qsTr("Gamma(α,β)"),			value: "gammaAB" }]
+			Rectangle
+			{
+				Layout.fillWidth: true
+				implicitHeight: dependentPriorRows.implicitHeight + 2 * jaspTheme.contentMargin
+				implicitWidth: dependentPriorRows.implicitWidth + 2 * jaspTheme.contentMargin
+				color: jaspTheme.analysisBackgroundColor
+				border.color: jaspTheme.borderColor
+				radius: jaspTheme.borderRadius
+
+				GridLayout
+				{
+					id: dependentPriorRows
+					anchors.fill: parent
+					anchors.margins: jaspTheme.contentMargin
+					columns: 3
+					rowSpacing: 1
+					columnSpacing: 5
+
+					Label
+					{
+						id: dependentMeanLabel
+						text: qsTr("Mean | Sigma")
+						Layout.preferredWidth: dependentPriors.parameterWidth
+						Layout.minimumWidth: dependentPriors.parameterWidth
+					}
+					Label { text: qsTr("Normal(μ,σ/√κ)"); Layout.preferredWidth: independentPriors.width2 }
+					Row
+					{
+						Layout.preferredWidth: independentPriors.width3
+						Layout.fillWidth: true
+						spacing: 4 * preferencesModel.uiScale
+						DoubleField
+						{
+							name: "priorDistributionsCustomDependentMeanMu"
+							label: "μ"
+							defaultValue: 0
+							negativeValues: true
+							fieldWidth: 40 * preferencesModel.uiScale
+							useExternalBorder: false
+							showBorder: true
+							info: qsTr("The conditional mean prior is Normal with location μ and variance σ² / κ. Its variance increases with the process variance.")
 						}
-					case "conjugate":
-						return {
-							"mean": 	[{ label: qsTr("Normal(μ,σ)"),			value: "normal"}],
-							"sigma": 	[{ label: qsTr("Gamma(α,β)"),			value: "gammaAB" }],
-							"df": 		[{ label: qsTr("Gamma(α,β)"),			value: "gammaAB" }]
-						};
-					// case "weaklyInformativeConjugate":
-					// 	return {
-					// 		"mean": 	[{ label: qsTr("Normal(μ,σ)"),			value: "normal"}],
-					// 		"sigma": 	[{ label: qsTr("Gamma(α,β)"),			value: "gammaAB" }],
-					// 		"df": 		[{ label: qsTr("Gamma(α,β)"),			value: "gammaAB" }]
-					// 	}
-					case "weaklyInformativeUniform":
-						return {
-							"mean": 	[{ label: qsTr("Uniform(a,b)"),			value: "uniform"}],
-							"sigma": 	[{ label: qsTr("Uniform(a,b)"),			value: "uniform"}],
-							"df": 		[{ label: qsTr("Gamma(α,β)"),			value: "gammaAB" }]
+						DoubleField
+						{
+							name: "priorDistributionsCustomDependentMeanKappa"
+							label: "κ"
+							defaultValue: 1
+							min: 0
+							inclusive: JASP.None
+							fieldWidth: 40 * preferencesModel.uiScale
+							useExternalBorder: false
+							showBorder: true
 						}
-					case "customInformative":
-						return undefined;
+					}
+
+					Label { text: qsTr("Sigma²"); Layout.preferredWidth: dependentPriors.parameterWidth; Layout.minimumWidth: dependentPriors.parameterWidth }
+					Label { text: qsTr("Inverse-Gamma(α,β)"); Layout.preferredWidth: independentPriors.width2 }
+					Row
+					{
+						Layout.preferredWidth: independentPriors.width3
+						Layout.fillWidth: true
+						spacing: 4 * preferencesModel.uiScale
+						DoubleField
+						{
+							name: "priorDistributionsCustomDependentSigmaSquaredAlpha"
+							label: "α"
+							defaultValue: 1
+							min: 0
+							inclusive: JASP.None
+							fieldWidth: 40 * preferencesModel.uiScale
+							useExternalBorder: false
+							showBorder: true
+							info: qsTr("σ² ~ Inverse-Gamma(α, β), with density proportional to (σ²)^(−α−1) exp(−β/σ²).")
+						}
+						DoubleField
+						{
+							name: "priorDistributionsCustomDependentSigmaSquaredBeta"
+							label: "β"
+							defaultValue: 0.15
+							min: 0
+							inclusive: JASP.None
+							fieldWidth: 40 * preferencesModel.uiScale
+							useExternalBorder: false
+							showBorder: true
+						}
+					}
 				}
 			}
 		}
@@ -766,39 +848,117 @@ Form
 
 	Section
 	{
-		title: qsTr("Advanced Options")
+		title: qsTr("Advanced")
 
 		Group
 		{
-			title: qsTr("MCMC Settings")
-			info: qsTr("Adjust the Markov Chain Monte Carlo (MCMC) settings for estimating the posterior distribution.")
-			IntegerField
+			RadioButtonGroup
 			{
-				name: "noIterations"
-				label: qsTr("No. iterations")
-				defaultValue: 5000
-				min: 100
-				max: 100000000
-				info: qsTr("Number of MCMC iterations used for estimating the posterior distribution.")
+				name: "advancedEstimationMethod"
+				id: advancedEstimationMethod
+				title: qsTr("Estimation method")
+				info: qsTr("Method used to estimate the posterior distribution. Numerical integration is available for the normal distribution; Student-t requires MCMC.")
+				onValueChanged:
+				{
+					if (value !== "integration")
+						priorDistributionsCustomSpecification.currentIndex = 0
+					if (value === "mcmc" && priorDistribution.currentValue === "unitInformation")
+						priorDistribution.currentIndex = 0
+				}
+
+				RadioButton
+				{
+					value: "integration"
+					label: qsTr("Numerical integration")
+					checked: dataDistribution.currentValue === "normal"
+					enabled: dataDistribution.currentValue === "normal"
+				}
+
+				RadioButton
+				{
+					value: "mcmc"
+					label: qsTr("MCMC")
+					checked: dataDistribution.currentValue === "studentT"
+				}
 			}
-			IntegerField
+
+			Group
 			{
-				name: "noWarmup"
-				label: qsTr("No. warmup samples")
-				defaultValue: 1000
-				min: 0
-				max: 100000000
-				info: qsTr("Number of initial MCMC samples to discard.")
+				title: qsTr("MCMC Settings")
+				enabled: advancedEstimationMethod.value === "mcmc" || priorPredictive.checked || posteriorPredictive.checked
+				info: qsTr("Adjust MCMC settings for estimation and for predictive sampling when numerical integration requires an additional MCMC fit.")
+				IntegerField
+				{
+					name: "advancedMcmcSettingsIterations"
+					id: samplingIterations
+					label: qsTr("Iterations")
+					defaultValue: 5000
+					min: 100
+					max: 100000000
+					info: qsTr("Number of sampling iterations per chain after warmup and before thinning. Warmup iterations are added to this number.")
+				}
+				IntegerField
+				{
+					name: "advancedMcmcSettingsWarmup"
+					label: qsTr("Warmup")
+					defaultValue: 1000
+					min: 100
+					max: 100000000
+					info: qsTr("Number of warmup iterations per chain, performed before the sampling iterations.")
+				}
+				IntegerField
+				{
+					name: "advancedMcmcSettingsChains"
+					label: qsTr("Chains")
+					defaultValue: 1
+					min: 1
+					max: 128
+					info: qsTr("Number of MCMC chains to run.")
+				}
+				IntegerField
+				{
+					name: "advancedMcmcSettingsThin"
+					label: qsTr("Thin")
+					defaultValue: 1
+					min: 1
+					max: Math.floor(samplingIterations.value / 10)
+					info: qsTr("Keep every nth MCMC sample. Thinning is limited to one tenth of the sampling iterations.")
+				}
+				DoubleField
+				{
+					name: "advancedMcmcSettingsAdaptDelta"
+					label: qsTr("Adapt delta")
+					defaultValue: 0.80
+					min: 0
+					max: 1
+					inclusive: JASP.None
+					decimals: 4
+					info: qsTr("Target acceptance probability for the MCMC sampler.")
+				}
+				IntegerField
+				{
+					name: "advancedMcmcSettingsMaximumTreedepth"
+					label: qsTr("Maximum treedepth")
+					defaultValue: 15
+					min: 1
+					max: 100
+					info: qsTr("Maximum tree depth used by the MCMC sampler.")
+				}
 			}
-			IntegerField
-			{
-				name: "noChains"
-				label: qsTr("No. chains")
-				defaultValue: 1
-				min: 1
-				max: 128
-				info: qsTr("Number of MCMC chains to run.")
-			}
+		}
+
+		SetSeed { }
+
+		IntegerField
+		{
+			name: "advancedPriorSamples"
+			label: qsTr("Prior samples")
+			fieldWidth: 1.5 * jaspTheme.numericFieldWidth
+			defaultValue: 200000
+			min: 1000
+			max: 100000000
+			enabled: advancedEstimationMethod.value === "integration"
+			info: qsTr("Number of Monte Carlo draws for prior-only summaries that require simulation with numerical integration.")
 		}
 	}
 }
