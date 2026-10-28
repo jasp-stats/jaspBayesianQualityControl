@@ -24,14 +24,14 @@ import JASP.Controls
 Group
 {
 	id: root
-	property	string	baseName: "posteriorDistributionPlot"
+	property	string	baseName: "priorAndPosteriorInferencePosteriorDistribution"
 	property	string	baseLabel: qsTr("Posterior distribution")
+	property bool hasMode: true
+	property bool pointEstimateChecked: false
 	property	bool	hasPrior: 		true
 	property	bool	hasEstimate: 	true
 	property	bool	hasCi: 			true
-	property	bool	hasType: 		false
-	property	bool	hasAxes: 		true
-	property	bool	hasPanels: 		true
+	property	bool	hasInterval: 		false
 
 	readonly property alias checked:	mainCheckBox.checked
 
@@ -40,13 +40,13 @@ Group
 		id:							mainCheckBox
 		name: 						baseName
 		label: 						baseLabel
+		info: qsTr("Display the distribution or sequential estimates, with the selected annotations.")
 
-		// Group so the options are shown in a 2-column layout
+		// Keep plot-specific options together below the plot checkbox
 		Group
 		{
 
-			columns: 					2
-			columnSpacing: 				10 * jaspTheme.columnGroupSpacing
+			columns: 					1
 
 			// Group so point estimate and CI options are shown in a single column
 			Group
@@ -59,18 +59,18 @@ Group
 					enabled:			hasEstimate
 					visible:			hasEstimate
 					label:				qsTr("Point estimate")
-					name:				baseName + "IndividualPointEstimate"
+					info: qsTr("Show the selected point estimate on the plot.")
+					name:				baseName + "PointEstimate"
+					checked: root.pointEstimateChecked
 					childrenOnSameRow:	true
 
 					DropDown
 					{
-						name:	baseName + "IndividualPointEstimateType"
+						name:	baseName + "PointEstimateType"
 						label:	""
-						values:	[
-							{label: qsTr("mean"),					value: "mean"},
-							{label: qsTr("median"),					value: "median"},
-							{label: qsTr("mode"),					value: "mode"}
-						]
+						values: root.hasMode
+							? [{label: qsTr("mean"), value: "mean"}, {label: qsTr("median"), value: "median"}, {label: qsTr("mode"), value: "mode"}]
+							: [{label: qsTr("mean"), value: "mean"}, {label: qsTr("median"), value: "median"}]
 					}
 				}
 
@@ -83,21 +83,21 @@ Group
 					columns: 1
 					CheckBox
 					{
-						name:				baseName + "IndividualCi"
+						name:				baseName + "Ci"
 						label:				qsTr("CI")
+						info: qsTr("Show a central, highest posterior density (HPD), or custom interval.")
 						id:					posteriorPlotIndividualCI
 						childrenOnSameRow:	true
 
 						DropDown
 						{
-							name:		baseName + "IndividualCiType"
+							name:		baseName + "CiType"
 							label:		""
 							id:			posteriorPlotIndividualType
 							values:		[
 								{label: qsTr("central"),				value: "central"},
 								{label: qsTr("HPD"),					value: "HPD"},
-								{label: qsTr("custom"),					value: "custom"}//,
-								// {label: qsTr("support"),				value: "support"}
+								{label: qsTr("custom"),					value: "custom"}
 							]
 						}
 					}
@@ -111,21 +111,19 @@ Group
 						CIField
 						{
 							visible:		posteriorPlotIndividualType.currentValue === "central" || posteriorPlotIndividualType.currentValue === "HPD"
-							name:			baseName + "IndividualCiMass"
+							name:			baseName + "CiMass"
 							label:			qsTr("Mass")
+							info: qsTr("Probability contained in the interval.")
 							fieldWidth:		50
-							defaultValue: 	95
-							min:			1
-							max:			100
-							inclusive:		JASP.MinMax
 						}
 
 						DoubleField
 						{
 							visible:		posteriorPlotIndividualType.currentValue === "custom"
-							name:			baseName + "IndividualCiLower"
+							name:			baseName + "CiLower"
 							label:			qsTr("Lower")
 							id:				plotsPosteriorLower
+							max: plotsPosteriorUpper.value
 							fieldWidth:		50
 							defaultValue:	0
 							negativeValues: true
@@ -135,121 +133,48 @@ Group
 						DoubleField
 						{
 							visible:		posteriorPlotIndividualType.currentValue === "custom"
-							name:			baseName + "IndividualCiUpper"
+							name:			baseName + "CiUpper"
 							label:			qsTr("Upper")
 							id:				plotsPosteriorUpper
+							min: plotsPosteriorLower.value
 							fieldWidth:		50
 							defaultValue:	1
 							negativeValues: true
 							inclusive:		JASP.MinMax
 						}
 
-						FormulaField
-						{
-							visible:		posteriorPlotIndividualType.currentValue === "support"
-							name:			baseName + "IndividualCiBf"
-							label:			qsTr("BF")
-							fieldWidth:		50
-							defaultValue:	"1"
-							min:			0
-							inclusive:		JASP.None
-						}
 					}
 				}
 			}
 
 			Group
 			{
-				enabled:			hasType
-				visible:			hasType
+				enabled:			hasInterval
+				visible:			hasInterval
 
-				title:		qsTr("Type")
+				title:		qsTr("Interval")
+				info: qsTr("Calculate the probability that each capability metric lies between these bounds.")
 
 				columns: 2
 				FormulaField
 				{
-					name:				baseName + "TypeLower"
+					name:				baseName + "IntervalLower"
 					label:				qsTr("Lower")
-					id:					typeLower
+					id:					intervalLower
 					fieldWidth:			50
 					defaultValue:		0.0
-					max:				typeUpper.value
+					max:				intervalUpper.realValue
 				}
 
 				FormulaField
 				{
-					name:				baseName + "TypeUpper"
+					name:				baseName + "IntervalUpper"
 					label:				qsTr("Upper")
-					id:					typeUpper
+					id:					intervalUpper
 					fieldWidth:			50
 					defaultValue:		1.0
-					min:				typeLower.value
+					min:				intervalLower.realValue
 
-				}
-			}
-
-			RadioButtonGroup
-			{
-				enabled:	hasPanels
-				visible:	hasPanels
-				name:		baseName + "PanelLayout"
-				title:		qsTr("Layout")
-				id:			posteriorDistributionPlotPanelLayout
-
-				RadioButton { value: "multiplePanels"; 	label: qsTr("One plot per metric"); 	checked: true	}
-				RadioButton { value: "singlePanel";		label: qsTr("All metrics in one plot") 					}
-
-			}
-
-			RadioButtonGroup
-			{
-				enabled:	hasAxes
-				visible:	hasAxes
-				name:		baseName + "Axes"
-				title:		qsTr("Axes")
-				id:			posteriorDistributionPlotAxes
-
-				RadioButton { value: "free"; 		label: qsTr("Automatic"); 					checked: true	}
-				RadioButton { value: "fixed";		label: qsTr("Identical across panels"); 	enabled: posteriorDistributionPlotPanelLayout.value === "multiplePanels"	}
-				RadioButton { value: "custom";		label: qsTr("Custom axes");	}
-			}
-
-			Group
-			{
-
-			title: qsTr("Custom axes")
-			enabled: hasAxes && posteriorDistributionPlotAxes.value === "custom"
-			visible: hasAxes && posteriorDistributionPlotAxes.value === "custom"
-
-				GridLayout
-				{
-					columns: 5
-					columnSpacing: 2
-					rowSpacing: jaspTheme.rowGridSpacing / 3
-					id: customAxesLayout
-					property int dbWidth: 50
-					property int txtWidth: 100
-
-					// Row 0: Headers
-					Label {text: qsTr("Axis")}
-					Item{}
-					Label {text: qsTr("Min")}
-					Item{}
-					Label {text: qsTr("Max")}
-
-					// Row 1: x axis
-					Label { text: qsTr("x axis"); }
-					Item{}
-					DoubleField { name: baseName + "custom_x_min"; id: custom_x_min; fieldWidth: customAxesLayout.dbWidth; defaultValue: 0.00; negativeValues: true; max: custom_x_max.value}
-					Item{}
-					DoubleField { name: baseName + "custom_x_max"; id: custom_x_max; fieldWidth: customAxesLayout.dbWidth; defaultValue: 1.00; negativeValues: true; min: custom_x_min.value}
-
-					// Row 2: y axis
-					Label { text: qsTr("y axis"); }
-					Item{}
-					DoubleField { name: baseName + "custom_y_min"; id: custom_y_min; fieldWidth: customAxesLayout.dbWidth; defaultValue: 0.00; negativeValues: false; max: custom_y_max.value}
-					Item{}
-					DoubleField { name: baseName + "custom_y_max"; id: custom_y_max; fieldWidth: customAxesLayout.dbWidth; defaultValue: 1.00; negativeValues: false; min: custom_y_min.value}
 				}
 			}
 
@@ -257,8 +182,9 @@ Group
 			{
 				enabled:	hasPrior
 				visible:	hasPrior
-				name:		baseName + "PriorDistribution"
+				name:		baseName + "ShowPriorDistribution"
 				label:		qsTr("Show prior distribution")
+				info: qsTr("Overlay the prior distribution for comparison with the posterior distribution.")
 				checked:	false
 			}
 		}

@@ -3,15 +3,15 @@ name: fix-debug-analysis
 description: >
   Guide for debugging JASP analysis functions via code inspection and saveRDS
   state capture. Use when fixing bugs, troubleshooting errors, or debugging R
-  analysis functions in JASP modules through MCP sessions. Also use when a user
+  analysis functions in JASP modules via direct Rscript calls. Also use when a user
   provides a .jasp file to reproduce an issue.
 ---
 
-# Fix & Debug JASP Analysis (MCP Session)
+# Fix & Debug JASP Analysis
 
-Quick reference for debugging JASP analysis functions through MCP sessions.
+Quick reference for debugging JASP analysis functions with direct Rscript calls.
 
-**Note**: `browser()` and `recover()` require interactive R console and **do not work** through MCP's `btw_tool_run_r`.
+**Note**: `browser()` and `recover()` require an interactive R console and **do not work** in non-interactive Rscript calls.
 
 ---
 
@@ -36,7 +36,7 @@ When the bug depends on runtime values that can't be deduced from code reading a
 
 1. **Instrument**: Add saveRDS() before the error location
 2. **Capture**: Hot-reload and run analysis, copy debug path from console
-3. **Inspect**: Load saved state and examine values via MCP
+3. **Inspect**: Load saved state and examine values via Rscript
 4. **Fix**: Develop and test fix using captured state
 5. **Verify**: Remove debug code, hot-reload, confirm fix works
 
@@ -139,7 +139,7 @@ Add saveRDS() just **before** the line that's failing:
     someVariable <- computeSomething(data, options)
 
     # DEBUG: REMOVE - save state before error
-    debug_dir <- tempdir()
+    debug_dir <- dirname(tempdir())
     saveRDS(list(
         someVariable = someVariable,
         relatedData = relatedData,
@@ -157,14 +157,14 @@ Add saveRDS() just **before** the line that's failing:
 **Critical rules**:
 - Always use marker comment `# DEBUG: REMOVE`
 - **Never save `jaspResults`** (crashes R)
-- Save to `tempdir()` (auto-cleanup)
+- Save to `dirname(tempdir())` so captures survive the Rscript process; remove capture files manually after inspection.
 - Include `message()` to print path to console
 - Save ALL variables that might be relevant
 
 ### Step 3: Hot-Reload and Capture
 
 ```r
-# Via btw_tool_run_r in MCP
+# Via Rscript
 devtools::load_all()
 
 # Re-run the analysis (use same code that triggered original error)
@@ -172,7 +172,7 @@ set.seed(1)
 results <- jaspTools::runAnalysis("AnalysisName", encoded$dataset, encoded$options, encodedDataset = TRUE, view = FALSE)
 
 # Console output will show:
-# DEBUG: Saved to C:/Users/.../Temp/RtmpXXX/debug_state.rds
+# DEBUG: Saved to C:/Users/.../Temp/debug_state.rds
 ```
 
 Copy the debug path from the console output.
@@ -180,8 +180,8 @@ Copy the debug path from the console output.
 ### Step 4: Inspect Captured State
 
 ```r
-# Via btw_tool_run_r in MCP
-debug_path <- "C:/Users/.../Temp/RtmpXXX/debug_state.rds"
+# Via Rscript
+debug_path <- "C:/Users/.../Temp/debug_state.rds"
 debug_data <- readRDS(debug_path)
 
 # Examine structure
@@ -205,7 +205,7 @@ for (i in seq_along(debug_data$relatedData)) {
 Based on inspection, develop fix logic using the saved objects:
 
 ```r
-# Via btw_tool_run_r in MCP
+# Via Rscript
 # Test the fix logic interactively using saved state
 
 # Example: Filter out invalid values
@@ -227,7 +227,7 @@ Once fix logic works, implement it in the source file.
 3. Hot-reload and verify:
 
 ```r
-# Via btw_tool_run_r in MCP
+# Via Rscript
 devtools::load_all()
 
 set.seed(1)
@@ -292,8 +292,8 @@ grep -r "saveRDS.*tempdir" R/
    saveRDS(list(
        footnotes = footnotes,
        dataList = dataList
-   ), file.path(tempdir(), "footnote_debug.rds"))
-   message("DEBUG: Saved to ", file.path(tempdir(), "footnote_debug.rds"))
+   ), file.path(dirname(tempdir()), "footnote_debug.rds"))
+   message("DEBUG: Saved to ", file.path(dirname(tempdir()), "footnote_debug.rds"))
 
    for (i in seq_along(footnotes))
        table$addFootnote(footnotes[[i]])
@@ -346,7 +346,7 @@ For errors in specific iterations/groups:
 # Only save when condition is met
 for (i in seq_along(items)) {
     if (i == 47) {  # Error only in iteration 47
-        saveRDS(list(item = items[[i]], i = i), file.path(tempdir(), "debug_iter47.rds"))
+        saveRDS(list(item = items[[i]], i = i), file.path(dirname(tempdir()), "debug_iter47.rds"))
         message("DEBUG: Saved iteration 47")
     }
     result <- process(items[[i]])
@@ -360,13 +360,13 @@ Narrow down error location by saving at multiple points:
 ```r
 # Checkpoint 1
 saveRDS(list(step = "before_transform", data = data),
-        file.path(tempdir(), "checkpoint1.rds"))
+        file.path(dirname(tempdir()), "checkpoint1.rds"))
 
 data_transformed <- transform(data)
 
 # Checkpoint 2
 saveRDS(list(step = "after_transform", data_transformed = data_transformed),
-        file.path(tempdir(), "checkpoint2.rds"))
+        file.path(dirname(tempdir()), "checkpoint2.rds"))
 ```
 
 ### Save with Timestamp
@@ -375,7 +375,7 @@ For multiple runs:
 
 ```r
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-saveRDS(list(...), file.path(tempdir(), paste0("debug_", timestamp, ".rds")))
+saveRDS(list(...), file.path(dirname(tempdir()), paste0("debug_", timestamp, ".rds")))
 ```
 
 ---

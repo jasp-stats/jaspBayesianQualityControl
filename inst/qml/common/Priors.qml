@@ -22,30 +22,17 @@ import JASP
 
 ColumnLayout
 {
+	id: priorLayout
+	Layout.fillWidth: true
 	spacing: 						0
 	property string priorType:		"normalModel"
 	property bool hasTruncation:	false
 	property bool hasParameters:	true
 
- 	Component.onCompleted: {
-		console.log("Component completed, priorType: " + priorType);
-		console.log("Current component values: " + JSON.stringify(currentComponentValues));
-	}
-
-	onPriorTypeChanged: {
-		// this is not shown?
-		console.log("Prior type changed to: " + priorType);
-	}
-
-	// TODO: these should not be fixed, no?
-	// property var meanValues: 	{ "name": "mean",  "type": "normal",   "mu":    "0", "sigma": "1" }
-	// property var sigmaValues: 	{ "name": "sigma", "type": "invgamma", "alpha": "1", "beta": "0.15", "truncationLower": 0 }
-	// property var dfValues: 	  	{ "name": "t",     "type": "invgamma", "alpha": "1", "beta": "0.15", "truncationLower": 0, "hasJeffreys": false }
-
 	property var nameMap: {
-		"mean": 	"Mean",
-		"sigma":	"Sigma",
-		"df": 		"df"
+		"mean": 	qsTr("Mean"),
+		"sigma":	qsTr("Sigma"),
+		"df": 		"df - 2"
 	}
 	property var defaultDistributionMap: {
 		"mean": 	"normal",
@@ -88,19 +75,6 @@ ColumnLayout
 	}
 	property var dropDownValuesMap: undefined
 	property var activeDropDownValuesMap: dropDownValuesMap !== undefined ? dropDownValuesMap : defaultDropDownValuesMap
-	property var hasJeffreysMap: {
-		"mean": 	true,
-		"sigma": 	true,
-		"df": 		false
-	}
-
-	onDropDownValuesMapChanged: console.log("dropDownValuesMap changed: " + dropDownValuesMap)
-	// property var defaultParametersMap: {
-	// 	"mean": { "mu": "0", "sigma": "1" },
-	// 	"sigma": { "alpha": "1",  "beta": "0.15", "truncationLower": 0 },
-	// 	"t": { "alpha": "1",  "beta": "0.15", "truncationLower": 0, "hasJeffreys": false }
-	// }
-
 	property var currentComponentValues: {
 		switch (priorType) {
 			case "normalModel":
@@ -108,42 +82,44 @@ ColumnLayout
 			case "tModel":
 				return [ "mean", "sigma", "df" ];
 		}
-		// switch (priorType) {
-		// 	case "normalModel":
-		// 			return [ meanValues, sigmaValues ];
-		// 	case "tModel":
-		// 		return [ meanValues, sigmaValues, dfValues ];
-		// }
 	}
 
 
-	// TODO: this could also be a gridLayout, no?
 	property double width1: 70 * preferencesModel.uiScale;
 	property double width2: 140 * preferencesModel.uiScale;
 	property double width3: 155 * preferencesModel.uiScale;
-	property double width4: 130 * preferencesModel.uiScale;
+	property double width4: 160 * preferencesModel.uiScale;
+
 
 	RowLayout
 	{
-		Label { text: qsTr("Parameter"); 	Layout.preferredWidth: width1; Layout.leftMargin: 5 * preferencesModel.uiScale}
-		Label { text: qsTr("Distribution"); Layout.preferredWidth: width2; Layout.leftMargin: 5 * preferencesModel.uiScale}
-		Label { text: qsTr("Parameters");	Layout.preferredWidth: width3 ; visible: hasParameters }
+		Layout.preferredWidth: priorList.availableWidth
+		Layout.leftMargin: jaspTheme.contentMargin
+		Label { text: qsTr("Parameter"); 	Layout.preferredWidth: width1 }
+		Label { text: qsTr("Distribution"); Layout.preferredWidth: width2 }
+		Label { text: qsTr("Parameters");	Layout.preferredWidth: width3 ; Layout.fillWidth: true; visible: hasParameters }
 		Label { text: qsTr("Truncation"); 	Layout.preferredWidth: width4 ; visible: hasTruncation }
 	}
 
 
 	ComponentsList
 	{
-		name:					priorType + "ComponentsList"
-		optionKey:				"name"
+		id: priorList
+		Layout.fillWidth: true
+		Layout.minimumHeight: Math.ceil(implicitHeight)
+		preferredWidth: priorLayout.width
+		name:					"priorDistributionsCustomIndependent" + (priorType === "normalModel" ? "Normal" : "StudentT")
+		optionKey:				"parameter"
+		info: qsTr("Sigma priors are restricted to positive values. Uniform lower bounds must be at least zero, and upper bounds must exceed the lower bound.")
+			+ (priorType === "tModel" ? "\n\n" + qsTr("The prior is placed on df - 2. The Student-t degrees of freedom equal this parameter plus 2, so df is greater than 2.") : "")
 
 		addItemManually:		false
 
-		// defaultValues:			currentComponentValues
 		values:					currentComponentValues
 
 		rowComponent: 			RowLayout
 		{
+			width: Math.max(implicitWidth, priorList.availableWidth)
 			Row
 			{
 				spacing:				4 * preferencesModel.uiScale
@@ -160,9 +136,9 @@ ColumnLayout
 				{
 					visible:			activeDropDownValuesMap[rowValue].length > 1
 					id: 				typeItem
-					name: 				"type"
+					name: 				"distribution"
 					useExternalBorder: 	true
-					value: 				defaultDistributionMap[rowValue]
+					startValue: 		defaultDistributionMap[rowValue]
 					values:				activeDropDownValuesMap[rowValue]
 				}
 
@@ -177,6 +153,7 @@ ColumnLayout
 			{
 				spacing:				4 * preferencesModel.uiScale
 				Layout.preferredWidth:	width3
+				Layout.fillWidth:		true
 				visible:				hasParameters
 
 				FormulaField
@@ -186,7 +163,7 @@ ColumnLayout
 					visible:			typeItem.currentValue === "normal"		||
 										typeItem.currentValue === "lognormal"	||
 										typeItem.currentValue === "t"
-					value:				"0"
+					defaultValue:		"0"
 					inclusive:			JASP.None
 					fieldWidth: 		40 * preferencesModel.uiScale
 					useExternalBorder:	false
@@ -199,7 +176,7 @@ ColumnLayout
 					name:				"x0"
 					visible:			typeItem.currentValue === "cauchy"	||
 										typeItem.currentValue === "spike"
-					value:				"0"
+					defaultValue:		"0"
 					inclusive:			JASP.None
 					fieldWidth: 		40 * preferencesModel.uiScale
 					useExternalBorder:	false
@@ -213,7 +190,7 @@ ColumnLayout
 					visible:			typeItem.currentValue === "normal"		||
 										typeItem.currentValue === "lognormal"	||
 										typeItem.currentValue === "t"
-					value:				"1"
+					defaultValue:		"1"
 					min:				0
 					inclusive:			JASP.None
 					fieldWidth: 		40 * preferencesModel.uiScale
@@ -225,7 +202,7 @@ ColumnLayout
 					label:				"k "
 					name:				"k"
 					visible:			typeItem.currentValue === "gammaK0"
-					value:				"1"
+					defaultValue:		"1"
 					min:				0
 					inclusive:			JASP.None
 					fieldWidth: 		40 * preferencesModel.uiScale
@@ -237,7 +214,7 @@ ColumnLayout
 					name:				"theta"
 					visible:			typeItem.currentValue === "cauchy"	||
 										typeItem.currentValue === "gammaK0"
-					value:				"1"
+					defaultValue:		"1"
 					min:				0
 					inclusive:			JASP.None
 					fieldWidth: 		40 * preferencesModel.uiScale
@@ -249,7 +226,7 @@ ColumnLayout
 					label:				"ν"
 					name:				"nu"
 					visible:			typeItem.currentValue === "t"
-					value:				"2"
+					defaultValue:		"2"
 					min:				1
 					inclusive:			JASP.MinOnly
 					fieldWidth: 		40 * preferencesModel.uiScale
@@ -263,7 +240,7 @@ ColumnLayout
 					visible:			typeItem.currentValue === "gammaAB"	 ||
 										typeItem.currentValue === "invgamma" ||
 										typeItem.currentValue === "beta"
-					value:				"1"
+					defaultValue:		"1"
 					min:				0
 					inclusive:			JASP.None
 					fieldWidth: 		40 * preferencesModel.uiScale
@@ -277,7 +254,7 @@ ColumnLayout
 					visible:			typeItem.currentValue === "gammaAB"	 ||
 										typeItem.currentValue === "invgamma" ||
 										typeItem.currentValue === "beta"
-					value:				"0.15"
+					defaultValue:		"0.15"
 					min:				0
 					inclusive:			JASP.None
 					fieldWidth: 		40 * preferencesModel.uiScale
@@ -289,10 +266,11 @@ ColumnLayout
 					label:				"a "
 					name:				"a"
 					id:					a
+					min: truncationLowerMap[rowValue]
 					visible:			typeItem.currentValue === "uniform"
-					value:				"0"
-					max:				b.value
-					inclusive:			JASP.None
+					defaultValue:		"0"
+					max:				b.realValue
+					inclusive:			JASP.MinOnly
 					fieldWidth: 		40 * preferencesModel.uiScale
 					useExternalBorder:	false
 					showBorder: 		true
@@ -303,8 +281,8 @@ ColumnLayout
 					name:				"b"
 					id:					b
 					visible:			typeItem.currentValue === "uniform"
-					value:				"1"
-					min:				a.value
+					defaultValue:		"1"
+					min:				Math.max(a.realValue, truncationLowerMap[rowValue])
 					inclusive:			JASP.None
 					fieldWidth: 		40 * preferencesModel.uiScale
 					useExternalBorder:	false
@@ -323,9 +301,9 @@ ColumnLayout
 					label: 				qsTr("lower")
 					name: 				"truncationLower"
 					visible:			hasTruncation && typeItem.currentValue !== "spike" && typeItem.currentValue !== "uniform" && typeItem.currentValue !== "jeffreys"
-					value:				Math.max((priorTruncationMap[typeItem.currentValue] || [-Infinity, Infinity])[0], truncationLowerMap[rowValue])
+					defaultValue:		Math.max((priorTruncationMap[typeItem.currentValue] || [-Infinity, Infinity])[0], truncationLowerMap[rowValue])
 					min:				Math.max((priorTruncationMap[typeItem.currentValue] || [-Infinity, Infinity])[0], truncationLowerMap[rowValue])
-					max: 				truncationUpper.value
+					max: 				truncationUpper.realValue
 					inclusive: 			JASP.MinOnly
 					fieldWidth:			40 * preferencesModel.uiScale
 					useExternalBorder:	false
@@ -337,9 +315,9 @@ ColumnLayout
 					label: 				qsTr("upper")
 					name: 				"truncationUpper"
 					visible:			hasTruncation && typeItem.currentValue !== "spike" && typeItem.currentValue !== "uniform" && typeItem.currentValue !== "jeffreys"
-					value:				(priorTruncationMap[typeItem.currentValue] || [-Infinity, Infinity])[1]
+					defaultValue:		(priorTruncationMap[typeItem.currentValue] || [-Infinity, Infinity])[1]
 					max:				(priorTruncationMap[typeItem.currentValue] || [-Infinity, Infinity])[1]
-					min: 				truncationLower ? truncationLower.value : 0
+					min: 				Math.max(truncationLower.realValue, truncationLowerMap[rowValue])
 					inclusive: 			JASP.MaxOnly
 					fieldWidth:			40 * preferencesModel.uiScale
 					useExternalBorder:	false
