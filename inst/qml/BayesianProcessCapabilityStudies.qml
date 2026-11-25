@@ -109,13 +109,6 @@ Form
 					{ label: qsTr("Normal"),	value: "normal" },
 					{ label: qsTr("Student-t"), value: "studentT" }
 				]
-				onCurrentValueChanged:
-				{
-					if (currentValue !== "normal")
-						priorDistributionsCustomSpecification.currentIndex = 0
-					if (currentValue === "studentT" && priorDistribution.currentValue === "unitInformation")
-					priorDistribution.currentIndex = 0
-				}
 			}
 
 			DropDown
@@ -123,14 +116,13 @@ Form
 				name: "priorDistribution"
 				id: priorDistribution
 				label: qsTr("Prior distribution")
-				info: qsTr("Use the package default, a unit information prior, Jeffreys priors, or custom priors. The default is DCSI for numerical integration and Jeffreys for MCMC. Unit information is available with numerical integration.")
+				info: qsTr("Use the package default, a unit information prior, Jeffreys priors, or custom priors. The default is the DCSI prior for every estimation method. For Student-t data, the degrees of freedom use their default prior under the DCSI and unit information priors.")
 				values: [
-					{ label: advancedEstimationMethod.value === "integration" ? qsTr("Default (DCSI)") : qsTr("Default (Jeffreys)"), value: "default" },
+					{ label: qsTr("Default (DCSI)"),		value: "default" },
 					{ label: qsTr("Unit information"),		value: "unitInformation" },
 					{ label: qsTr("Jeffreys"),				value: "jeffreys" },
 					{ label: qsTr("Custom"), value: "custom" }
 				]
-				enabledOptions: [true, advancedEstimationMethod.value === "integration", true, true]
 			}
 
 			DoubleField
@@ -248,7 +240,11 @@ Form
 					thresholdRevision++
 
 					Qt.callLater(function() {
-						var newCount = overviewThresholdValues().length
+						// the form can be destroyed before the deferred call runs
+						if (!processCriteria || !statisticsProcessOverviewThreshold)
+							return
+
+						var newCount = processCriteria.overviewThresholdValues().length
 
 						if (newCount > 0)
 							statisticsProcessOverviewThreshold.currentIndex = Math.min(Math.max(oldIndex, 0), newCount - 1)
@@ -527,16 +523,12 @@ Form
 			{
 				name: "statisticsProcessOverviewSensitivityAnalysisPrior"
 				label: qsTr("Sensitivity analysis prior")
-				info: qsTr("Prior used for the sensitivity analysis. The DCSI and unit information priors are only available with numerical integration.")
-				values: advancedEstimationMethod.value === "integration"
-					? [
-						{ label: qsTr("DCSI"),             value: "DCSI" },
-						{ label: qsTr("Jeffreys"),         value: "Jeffreys" },
-						{ label: qsTr("Unit information"), value: "unit_information" }
-					]
-					: [
-						{ label: qsTr("Jeffreys"),         value: "Jeffreys" }
-					]
+				info: qsTr("Prior used for the sensitivity analysis.")
+				values: [
+					{ label: qsTr("DCSI"),             value: "DCSI" },
+					{ label: qsTr("Jeffreys"),         value: "Jeffreys" },
+					{ label: qsTr("Unit information"), value: "unit_information" }
+				]
 				indexDefaultValue: 0
 			}
 
@@ -724,8 +716,7 @@ Form
 				{ label: qsTr("Independent"), value: "independent" },
 				{ label: qsTr("Dependent"), value: "dependent" }
 			]
-			enabledOptions: [true, dataDistribution.currentValue === "normal" && advancedEstimationMethod.value === "integration"]
-			info: qsTr("Independent priors specify a separate distribution for each parameter. The dependent Normal–Inverse-Gamma prior specifies the mean conditional on the process variance. It is available for normal data with numerical integration.")
+			info: qsTr("Independent priors specify a separate distribution for each parameter. The dependent Normal–Inverse-Gamma prior specifies the mean conditional on the process variance. For Student-t data, the dependent prior uses the default prior for the degrees of freedom.")
 		}
 
 		Common.Priors
@@ -858,13 +849,6 @@ Form
 				id: advancedEstimationMethod
 				title: qsTr("Estimation method")
 				info: qsTr("Method used to estimate the posterior distribution. Numerical integration is available for the normal distribution; Student-t requires MCMC.")
-				onValueChanged:
-				{
-					if (value !== "integration")
-						priorDistributionsCustomSpecification.currentIndex = 0
-					if (value === "mcmc" && priorDistribution.currentValue === "unitInformation")
-						priorDistribution.currentIndex = 0
-				}
 
 				RadioButton
 				{

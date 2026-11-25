@@ -3516,8 +3516,8 @@
       "RemoteHost": "api.github.com",
       "RemoteUsername": "FBartos",
       "RemoteRepo": "qc",
-      "RemoteRef": "main",
-      "RemoteSha": "eae04fa6948280927b509cfc09455366f27e412c"
+      "RemoteRef": "feature/fix-wrong-integration-results",
+      "RemoteSha": "240be6625ae30893c1767382c96b7d393a06dde3"
     },
     "ragg": {
       "Package": "ragg",

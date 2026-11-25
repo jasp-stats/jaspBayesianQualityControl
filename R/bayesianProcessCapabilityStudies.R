@@ -325,12 +325,8 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 }
 
 .bpcsPriorHelper <- function(options) {
-  if (options[["priorDistribution"]] == "default") {
-    if (options[["advancedEstimationMethod"]] == "integration") {
-      return("DCSI")
-    }
-    return("Jeffreys")
-  }
+  if (options[["priorDistribution"]] == "default")
+    return("DCSI")
   if (options[["priorDistribution"]] == "unitInformation")
     return(qc::prior_unit_information(n0 = options[["priorDistributionUnitInformationValue"]]))
   if (options[["priorDistribution"]] == "jeffreys")
@@ -509,6 +505,9 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   selectedMetrics <- .bpcsGetSelectedMetrics(options)
 
   df <- df[df$metric %in% selectedMetrics, , drop = FALSE]
+
+  if (length(selectedMetrics) == 0L)
+    table$addFootnote(gettext("Select at least one capability metric under Statistics > Metrics."))
 
   table$setData(df)
   diagnostics <- resultsObject$summaryObject$divergence_diagnostics
@@ -725,6 +724,13 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   names(colors) <- criteria$keys
   colors
+}
+
+# ggplot2 orders legends without an explicit order by a hash that differs between R sessions, so
+# the prior/posterior legend gets a fixed place. Only linetype: jaspBase replaces the colour and fill
+# guides when it renders the plot.
+.bpcsLegendOrder <- function() {
+  ggplot2::guides(linetype = ggplot2::guide_legend(order = 1))
 }
 
 .bpcsLabelProcessCriteria <- function(plot, criteria) {
@@ -967,6 +973,12 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   densityPlot <- .bpcsLabelProcessCriteria(densityPlot, criteria)
 
+  # a single metric, already named on the x-axis, so no colour legend
+  for (i in seq_along(densityPlot$layers)) {
+    if (inherits(densityPlot$layers[[i]]$geom, "GeomLine"))
+      densityPlot$layers[[i]]$show.legend <- c(colour = FALSE, linetype = TRUE)
+  }
+
   if (.bpcsPriorIsUsable(priorFit)) {
     priorDensity <- qc::extract_density_data(priorFit$summaryObject, what = metric)
     densityPlot <- densityPlot +
@@ -986,7 +998,8 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     ggplot2::labs(title = gettext("B. Prior and posterior distributions"), x = metric, y = gettext("Density"),
                   caption = priorFit[["error"]]) +
     jaspGraphs::geom_rangeframe() +
-    jaspGraphs::themeJaspRaw(legend.position = "right")
+    jaspGraphs::themeJaspRaw(legend.position = "right") +
+    .bpcsLegendOrder()
 
   overTimeTitle <- gettextf("C. Monitoring P(%1$s > %2$g | data) sequentially", metric, threshold)
   overTimePlot <- .bpcsMakeOverviewSequentialPanel(data$sequential, metric, thresholdIndex, priorFit, criteria, overTimeTitle)
@@ -1235,6 +1248,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
                      caption = if (isPost && options[[paste0(base, "ShowPriorDistribution")]]) priorFit[["error"]]) +
         jaspGraphs::geom_rangeframe() +
         jaspGraphs::themeJaspRaw(legend.position = "right") +
+        .bpcsLegendOrder() +
         ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
 
     }
@@ -1273,7 +1287,8 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
                         )))
   jaspResults[[base]] <- plt
 
-  if (!.bpcsIsReady(options) || jaspResults$getError()) return()
+  # without metrics there is nothing to show, so skip the sequential fits
+  if (!.bpcsIsReady(options) || jaspResults$getError() || length(.bpcsGetSelectedMetrics(options)) == 0L) return()
 
   sequentialPlotData <- .bpcsGetSequentialAnalysis(jaspResults, dataset, options, fit, custom = base == "sequentialAnalysisIntervalEstimatePlot")
 
@@ -1306,7 +1321,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
                         )))
   jaspResults[[base]] <- plt
 
-  if (!.bpcsIsReady(options) || jaspResults$getError()) return()
+  if (!.bpcsIsReady(options) || jaspResults$getError() || length(.bpcsGetSelectedMetrics(options)) == 0L) return()
 
   sequentialPlotData <- .bpcsGetSequentialAnalysis(jaspResults, dataset, options, fit, custom = base == "sequentialAnalysisIntervalEstimatePlot")
 
