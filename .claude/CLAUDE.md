@@ -22,53 +22,46 @@ For comprehensive guidance on specific topics, see:
 - **[Translation (i18n)](.claude/rules/translation-instructions.md)** - gettext/gettextf/qsTr usage, formatting, plurals
 - **[Output Structure](.claude/rules/jasp-output-structure.md)** - Reading/testing serialized output (containers, tables, plots, state)
 - **[Git Workflow](.claude/rules/git-workflow.md)** - Commit message style, branch strategy, PR guidelines, git safety rules
+- **[Math & Literature Tools](.claude/rules/math-and-literature-tools.md)** - StatsVault literature search, Wolfram/Mathematica, Python symbolic and arbitrary-precision numerics. Machine-level: verify before relying
 
-## R Session via MCP
+## Running R
 
-This project uses the `btw` MCP server (`.claude/mcp-server.R`) to provide a persistent R session via `btw_tool_run_r`. The MCP server config (`.mcp.json`) is module-specific and NOT committed to git.
+Agents call R directly. Every `Rscript` call is a fresh process, so source
+the preamble first:
 
-**Session handoff:** The user sets up their R session (RStudio/Positron/radian), runs `btw::btw_mcp_session()`, and hands it over. Connect via `list_r_sessions` / `select_r_session`. All `btw_tool_run_r` calls then execute in the user's session with full access to loaded packages and objects. The following R packages are required for the mcp server: `btw`, `mcptools`.  
+```bash
+Rscript --no-init-file -e 'source(".claude/r-preamble.R"); agentTestAll()'
+```
 
-### Available MCP Tools
+`.claude/r-preamble.R` loads the project library (`renv::load()`) and configures
+jaspTools. Run the one-time setup first, once per checkout:
 
-These are MCP tools — invoke them directly as tool calls, not as R functions or shell commands:
+```bash
+Rscript --no-init-file -e 'source(".claude/session_startup.R")'
+```
 
-| Tool | Use for |
-|------|---------|
-| `list_r_sessions` | Discover available R sessions (call first) |
-| `select_r_session` | Connect to a session from the list |
-| `btw_tool_run_r` | Execute R code in persistent session (variables persist between calls) |
-| `btw_tool_docs_help_page` | Look up R function documentation |
-| `btw_tool_docs_package_news` | Check package changelogs |
-| `btw_tool_docs_available_vignettes` | Find package vignettes |
-| `btw_tool_env_describe_environment` | Inspect objects in the R session |
-| `btw_tool_env_describe_data_frame` | Inspect data frame structure |
-| `btw_tool_search_packages` | Search CRAN for packages |
-| `btw_tool_session_platform_info` | Check R version and platform |
-| `btw_tool_session_check_package_installed` | Verify package availability |
-
-**Use native tools** (Read, Edit, Write, Glob, Grep, Bash) for file editing, git operations, and file search -- they are faster than MCP equivalents.
+Nothing persists between calls, so make each invocation self-contained. For
+anything longer than a line or two, write a scratch `.R` file and run that
+instead of fighting shell quoting. Tests take minutes -- never cancel them.
 
 ## Working Effectively
 
-### Session Setup (done by user)
+### Session Setup (once per checkout)
 
-At the start of a session, check for a connected R session via `list_r_sessions`. If none is available, **prompt the user** to run in their interactive R console:
-
-```r
-source(".claude/session_startup.R")
+```bash
+Rscript --no-init-file -e 'source(".claude/session_startup.R")'
 ```
 
-This restores dependencies, installs the module, configures jaspTools, and registers the session. Then connect via `list_r_sessions` / `select_r_session`.
+Restores renv, installs the module and jaspTools, sets `module.dirs`.
 
 ### Hot-Reload After Code Changes
 
-- **R code only changed:** `devtools::load_all()` via `btw_tool_run_r`
+- **R code only changed:** `devtools::load_all()` inside the Rscript call
 - **QML, dependencies, or imports changed:** `renv::install(".", prompt = FALSE)`
 
 ### Running Tests
 
-Run via `btw_tool_run_r` in the persistent session:
+Run via Rscript, sourcing the preamble first:
 
 **Agent-optimized** (preferred -- compact output, returns queryable result object):
 
@@ -110,7 +103,7 @@ testAnalysis("AnalysisName")
 - Analysis names are PascalCase exports from NAMESPACE
 - Some tests skip on certain platforms (e.g., Windows) -- expected
 - Some stderr noise (ggplot messages, tryCatch errors) may leak through -- expected and minor
-- **MCP timeout:** If `btw_tool_run_r` times out on `agentTestAll()`, do NOT retry -- use the Bash fallback in [testing-instructions.md](.claude/rules/testing-instructions.md)
+- **Long runs:** `agentTestAll()` takes 180-300+ seconds. Never cancel it; see [testing-instructions.md](.claude/rules/testing-instructions.md)
 
 **See [testing-instructions.md](.claude/rules/testing-instructions.md) for detailed test writing guidelines, snapshots, and workflows.**
 
@@ -171,9 +164,9 @@ After `runAnalysis()`, check:
 │   └── Upgrades.qml             # Version upgrade mappings
 ├── examples/                    # Example .jasp files for testing
 ├── tests/testthat/              # Unit tests using jaspTools
-├── .claude/                     # Claude Code instructions and MCP server
+├── .claude/                     # Claude Code instructions, hooks and skills
 │   ├── CLAUDE.md                # This file
-│   ├── mcp-server.R             # MCP server startup script
+│   ├── r-preamble.R             # Per-call R bootstrap
 │   └── rules/                   # Path-specific rules
 ├── .github/workflows/           # CI/CD automation
 ├── DESCRIPTION                  # R package metadata
@@ -273,3 +266,27 @@ After `runAnalysis()`, check:
 - Use `createJaspTable()`, `createJaspPlot()`, `createJaspHtml()` for output elements
 - Always set `$dependOn()` for proper caching and state management
 - Use containers for grouping related elements, state objects for reusing computed results
+
+## Turn Discipline (Claude Code hooks)
+
+Two `Stop` hooks in `.claude/settings.local.json` run at the end of every turn:
+
+1. **Self-check** - blocks once, feeds back a checklist: finish the whole task,
+   name any outstanding item with its blocker, run tests for real, never weaken
+   an expectation or refresh a snapshot to pass, keep the three rule trees in
+   sync, commit on a feature branch.
+2. **Independent audit** - `.claude/hooks/stop-audit.py` sends a structured
+   brief of the turn (task, preceding turns, hook feedback, every assistant
+   statement, a complete tool ledger, the final message) to a separate
+   `claude -p` session that answers PASS or BLOCK. Because the ledger is
+   complete, an absent test run is itself a finding.
+
+Needs the Claude CLI logged in. It fails open, so read
+`.claude/logs/stop-audit.log` rather than reading silence as a pass.
+
+## Advisor
+
+Stuck on something hard? `.claude/skills/advisor/` consults a stronger model
+with read-only access to the repo. For genuinely hard problems only - a bug
+chased over several attempts, a reactive/state puzzle, a result that will not
+reconcile. Not for syntax or API lookups.
