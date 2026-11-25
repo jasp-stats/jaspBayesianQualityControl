@@ -233,9 +233,13 @@ Form
 					})
 				}
 
+				// The dropdown keeps its value when that is still one of the boundaries. While the form loads it is
+				// empty until the rows exist, and then restores the saved value itself. So only step in when the
+				// selected boundary was edited or removed, and keep the selected position in that case.
 				function refreshThresholds()
 				{
 					var oldIndex = statisticsProcessOverviewThreshold.currentIndex
+					var oldValue = statisticsProcessOverviewThreshold.currentValue
 
 					thresholdRevision++
 
@@ -244,10 +248,10 @@ Form
 						if (!processCriteria || !statisticsProcessOverviewThreshold)
 							return
 
-						var newCount = processCriteria.overviewThresholdValues().length
+						var newValues = processCriteria.overviewThresholdValues().map(function(threshold) { return threshold.value })
 
-						if (newCount > 0)
-							statisticsProcessOverviewThreshold.currentIndex = Math.min(Math.max(oldIndex, 0), newCount - 1)
+						if (oldIndex >= 0 && newValues.length > 0 && newValues.indexOf(oldValue) === -1)
+							statisticsProcessOverviewThreshold.currentIndex = Math.min(oldIndex, newValues.length - 1)
 					})
 				}
 

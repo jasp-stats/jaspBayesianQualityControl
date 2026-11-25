@@ -196,6 +196,20 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   )
 }
 
+# The part of a qc fit or summary that the plots and interval queries need. qc stores the integration
+# results several times: next to the metrics and, within the metrics, also in their distributions.
+.bpcsCompactMetrics <- function(fit) {
+  metrics <- fit$metrics
+  if (!is.null(attr(metrics, "distributions")))
+    attr(metrics, "results") <- NULL
+  metrics
+}
+
+# Plot recipes are stored in the state, so they only get the options their plot needs.
+.bpcsOptionsStartingWith <- function(options, prefixes) {
+  options[Reduce(`|`, lapply(prefixes, startsWith, x = names(options)))]
+}
+
 .bpcsPlotLayoutDeps <- function(base, hasPrior = TRUE, hasEstimate = TRUE, hasCi = TRUE, hasInterval = FALSE) {
   c(
     base,
@@ -668,7 +682,10 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   tryCatch({
     criteria <- .bpcsProcessCriteria(options)
     data <- .bpcsOverviewData(jaspResults, dataset, options, fit, criteria)
-    plot$plotObject <- .bpcsMakeProcessOverviewPlot(rawDataset, options, fit, priorFit, data, criteria)
+    plot$plotObject <- jaspGraphs::createJaspPlotRecipe(
+      .bpcsMakeProcessOverviewPlot,
+      .bpcsOverviewPlotArgs(rawDataset, options, fit, priorFit, data, criteria)
+    )
   }, error = function(e) {
     plot$setError(gettextf("Unexpected error in Process overview: %s", e$message))
   })
@@ -936,31 +953,62 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     ggplot2::theme(plot.title = ggplot2::element_text(size = 18))
 }
 
-.bpcsTimeSeriesLabels <- function() {
-  ggplot2::labs(x = gettext("Observation number"), y = gettext("Measurements"))
-}
-
-.bpcsMakeProcessOverviewPlot <- function(dataset, options, fit, priorFit, data, criteria) {
+# The results of the selected metric and threshold, which is all that the overview plot shows.
+.bpcsOverviewPlotArgs <- function(dataset, options, fit, priorFit, data, criteria) {
 
   metric         <- options[["statisticsProcessOverviewCapabilityMetric"]]
   thresholdIndex <- .bpcsOverviewThresholdIndex(options, criteria)
-  threshold      <- criteria$values[thresholdIndex]
-  regionColors   <- .bpcsOverviewRegionColors(criteria)
-  rawData        <- dataset[[1L]]
 
-  timeSeriesPlot <- qc::plot_time_series(
-    rawData,
-    LSL = options[["capabilitySpecificationLowerLimit"]],
-    target = options[["capabilitySpecificationTargetValue"]],
-    USL = options[["capabilitySpecificationUpperLimit"]]
-  ) +
-    .bpcsTimeSeriesLabels() +
-    ggplot2::labs(title = gettext("A. Time series")) +
-    jaspGraphs::geom_rangeframe() +
-    jaspGraphs::themeJaspRaw()
+  sequential <- data$sequential[c("sampleSizes", "failed", "firstError")]
+  sequential$probability <- data$sequential$probabilities[[metric]][, thresholdIndex]
+
+  densities   <- data$sensitivity$densities
+  sensitivity <- list(
+    probabilities = data$sensitivity$probabilities[[metric]][thresholdIndex, ],
+    priorLabels   = colnames(data$sensitivity$probabilities[[metric]]),
+    density       = densities[densities$metric == metric, , drop = FALSE],
+    unavailable   = data$sensitivity$unavailable
+  )
+
+  priorDensity     <- NULL
+  priorProbability <- NA_real_
+  if (.bpcsPriorIsUsable(priorFit)) {
+    priorDensity     <- qc::extract_density_data(priorFit$summaryObject, what = metric)
+    priorDensity     <- data.frame(x = priorDensity$x, y = priorDensity$density, type = "prior")
+    priorProbability <- tryCatch(
+      .bpcsMetricExceedanceProbabilities(priorFit$rawfit, metric, criteria$values)[thresholdIndex],
+      error = function(e) NA_real_
+    )
+  }
+
+  list(
+    x                = dataset[[1L]],
+    LSL              = options[["capabilitySpecificationLowerLimit"]],
+    target           = options[["capabilitySpecificationTargetValue"]],
+    USL              = options[["capabilitySpecificationUpperLimit"]],
+    metric           = metric,
+    thresholdIndex   = thresholdIndex,
+    criteria         = criteria,
+    metrics          = .bpcsCompactMetrics(fit$summaryObject),
+    priorDensity     = priorDensity,
+    priorProbability = priorProbability,
+    priorError       = priorFit[["error"]],
+    sequential       = sequential,
+    sensitivity      = sensitivity
+  )
+}
+
+.bpcsMakeProcessOverviewPlot <- function(x, LSL, target, USL, metric, thresholdIndex, criteria, metrics, priorDensity,
+                                         priorProbability, priorError, sequential, sensitivity) {
+
+  threshold    <- criteria$values[thresholdIndex]
+  regionColors <- .bpcsOverviewRegionColors(criteria)
+
+  timeSeriesPlot <- .bpcsMakeTimeSeriesPlot(x, LSL, target, USL) +
+    ggplot2::labs(title = gettext("A. Time series"))
 
   densityPlot <- qc::plot_density(
-    fit$summaryObject,
+    metrics,
     what = metric,
     point_estimate = "none",
     ci = "none",
@@ -979,11 +1027,10 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
       densityPlot$layers[[i]]$show.legend <- c(colour = FALSE, linetype = TRUE)
   }
 
-  if (.bpcsPriorIsUsable(priorFit)) {
-    priorDensity <- qc::extract_density_data(priorFit$summaryObject, what = metric)
+  if (!is.null(priorDensity)) {
     densityPlot <- densityPlot +
       ggplot2::geom_line(
-        data = data.frame(x = priorDensity$x, y = priorDensity$density, type = "prior"),
+        data = priorDensity,
         mapping = ggplot2::aes(x = .data$x, y = .data$y, linetype = .data$type),
         inherit.aes = FALSE
       ) +
@@ -996,15 +1043,15 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   densityPlot <- densityPlot +
     ggplot2::labs(title = gettext("B. Prior and posterior distributions"), x = metric, y = gettext("Density"),
-                  caption = priorFit[["error"]]) +
+                  caption = priorError) +
     jaspGraphs::geom_rangeframe() +
     jaspGraphs::themeJaspRaw(legend.position = "right") +
     .bpcsLegendOrder()
 
   overTimeTitle <- gettextf("C. Monitoring P(%1$s > %2$g | data) sequentially", metric, threshold)
-  overTimePlot <- .bpcsMakeOverviewSequentialPanel(data$sequential, metric, thresholdIndex, priorFit, criteria, overTimeTitle)
+  overTimePlot <- .bpcsMakeOverviewSequentialPanel(sequential, priorProbability, overTimeTitle)
 
-  sensitivityPlot <- .bpcsMakeOverviewSensitivityPanel(data$sensitivity, metric, thresholdIndex, threshold, regionColors)
+  sensitivityPlot <- .bpcsMakeOverviewSensitivityPanel(sensitivity, metric, thresholdIndex, threshold, regionColors)
 
   panels <- lapply(list(timeSeriesPlot, densityPlot, overTimePlot, sensitivityPlot), function(panel) {
     panel + ggplot2::theme(plot.margin = ggplot2::margin(10, 10, 10, 10))
@@ -1017,7 +1064,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   )
 }
 
-.bpcsMakeOverviewSequentialPanel <- function(sequential, metric, thresholdIndex, priorFit, criteria, title) {
+.bpcsMakeOverviewSequentialPanel <- function(sequential, priorProbability, title) {
 
   failed <- sequential$failed
   nFailed <- sum(failed)
@@ -1031,7 +1078,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   overTimeData <- data.frame(
     observation = sequential$sampleSizes,
-    probability = sequential$probabilities[[metric]][, thresholdIndex]
+    probability = sequential$probability
   )[!failed, , drop = FALSE]
   # consecutive successful checkpoints share a segment, so lines never bridge a failed update
   overTimeData$segment <- cumsum(c(TRUE, diff(which(!failed)) != 1L))
@@ -1042,12 +1089,6 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   if (failed[nTotal])
     captions <- c(captions, gettext("The update with all observations failed, so the final probability is unavailable."))
 
-  priorProbability <- NA_real_
-  if (.bpcsPriorIsUsable(priorFit))
-    priorProbability <- tryCatch(
-      .bpcsMetricExceedanceProbabilities(priorFit$rawfit, metric, criteria$values)[thresholdIndex],
-      error = function(e) NA_real_
-    )
   priorLine <- if (is.finite(priorProbability))
     ggplot2::geom_hline(yintercept = priorProbability, linetype = "dotdash")
 
@@ -1067,9 +1108,8 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
 .bpcsMakeOverviewSensitivityPanel <- function(sensitivity, metric, thresholdIndex, threshold, regionColors) {
 
-  probabilities <- sensitivity$probabilities[[metric]]
-  priorLabels <- colnames(probabilities)
-  sensitivityDensity <- sensitivity$densities[sensitivity$densities$metric == metric, , drop = FALSE]
+  priorLabels <- sensitivity$priorLabels
+  sensitivityDensity <- sensitivity$density
 
   sensitivityDensity$region <- ifelse(
     sensitivityDensity$x <= threshold,
@@ -1079,7 +1119,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   sensitivityProbabilityLabels <- sprintf(
     "%s\nP(%s > %g | data) = %.2f",
     priorLabels, metric, threshold,
-    probabilities[thresholdIndex, ]
+    sensitivity$probabilities
   )
   sensitivityDensity$prior <- factor(
     sensitivityProbabilityLabels[match(sensitivityDensity$prior, priorLabels)],
@@ -1132,18 +1172,22 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     return()
 
   tryCatch({
-    plot$plotObject <- qc::plot_time_series(
-      dataset[[1L]],
-      LSL = if (options[["capabilitySpecificationLowerLimit"]] != "") options[["capabilitySpecificationLowerLimit"]] else NULL,
+    plot$plotObject <- jaspGraphs::createJaspPlotRecipe(.bpcsMakeTimeSeriesPlot, list(
+      x      = dataset[[1L]],
+      LSL    = if (options[["capabilitySpecificationLowerLimit"]] != "") options[["capabilitySpecificationLowerLimit"]] else NULL,
       target = if (options[["capabilitySpecificationTargetValue"]] != "") options[["capabilitySpecificationTargetValue"]] else NULL,
-      USL = if (options[["capabilitySpecificationUpperLimit"]] != "") options[["capabilitySpecificationUpperLimit"]] else NULL
-    ) +
-      .bpcsTimeSeriesLabels() +
-      jaspGraphs::geom_rangeframe() +
-      jaspGraphs::themeJaspRaw()
+      USL    = if (options[["capabilitySpecificationUpperLimit"]] != "") options[["capabilitySpecificationUpperLimit"]] else NULL
+    ))
   }, error = function(e) {
     plot$setError(gettextf("Unexpected error in Time series plot: %s", e$message))
   })
+}
+
+.bpcsMakeTimeSeriesPlot <- function(x, LSL, target, USL) {
+  qc::plot_time_series(x, LSL = LSL, target = target, USL = USL) +
+    ggplot2::labs(x = gettext("Observation number"), y = gettext("Measurements")) +
+    jaspGraphs::geom_rangeframe() +
+    jaspGraphs::themeJaspRaw()
 }
 
 .bpcsCapabilityPlot <- function(jaspResults, options, fit, priorFit, position, base = "priorAndPosteriorInferencePosteriorDistribution") {
@@ -1191,67 +1235,36 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     return()
   }
 
+  if (length(selectedMetrics) == 0L)
+    return()
+
   tryCatch({
 
-    if (length(selectedMetrics) == 0) {
-      NULL
-    } else {
+    # qc draws the point estimate / ci annotation with ggtext::geom_richtext(size = ...),
+    # whose size is in mm and defaults to 18 (~51pt), swamping the panel. Scale it to the
+    # width one panel actually gets instead: 3mm is the largest that keeps the longest
+    # label ("Mean = x.xxx; xx.x% CI [x.xxx, x.xxx]") inside a 400px panel. Never grow past
+    # the standard jasp font size.
+    panelWidth     <- plotWidth / panelLayout[2L]
+    annotationSize <- min(3 * panelWidth / 400, jaspGraphs::graphOptions("fontsize") / ggplot2::.pt)
 
-      # qc draws the point estimate / ci annotation with ggtext::geom_richtext(size = ...),
-      # whose size is in mm and defaults to 18 (~51pt), swamping the panel. Scale it to the
-      # width one panel actually gets instead: 3mm is the largest that keeps the longest
-      # label ("Mean = x.xxx; xx.x% CI [x.xxx, x.xxx]") inside a 400px panel. Never grow past
-      # the standard jasp font size.
-      panelWidth     <- plotWidth / panelLayout[2L]
-      annotationSize <- min(3 * panelWidth / 400, jaspGraphs::graphOptions("fontsize") / ggplot2::.pt)
-
-      # the regions follow the user's process criteria; only parsed when they are shown, so invalid
-      # criteria do not break the plot otherwise (qc's defaults are unused while show_regions is FALSE)
-      showRegions <- options[["priorAndPosteriorInferenceShowProcessCriteria"]]
-      criteria    <- if (showRegions) .bpcsProcessCriteria(options)
-
-      densityPlot <- qc::plot_density(
-        summaryObject,
-        what = selectedMetrics,
-        point_estimate     = if (options[[paste0(base, "PointEstimate")]]) options[[paste0(base, "PointEstimateType")]] else "none",
-        ci                 = if (options[[paste0(base, "Ci")]])            options[[paste0(base, "CiType")]]            else "none",
-        ci_level           = options[[paste0(base, "CiMass")]],
-        ci_custom_left     = options[[paste0(base, "CiLower")]],
-        ci_custom_right    = options[[paste0(base, "CiUpper")]],
-        single_panel       = singlePanel,
-        axes               = options[["priorAndPosteriorInferenceAxes"]],
-        axes_custom        = .bpcsGetCustomAxisLimits(options, "priorAndPosteriorInference"),
-        priorSummaryObject = priorSummaryObject,
-        textsize           = annotationSize,
-        colorScheme        = if (singlePanel && length(selectedMetrics) > 1L) grDevices::hcl.colors(length(selectedMetrics), "Dark 3") else NULL,
-        show_regions       = showRegions,
-        region_cutoffs     = if (showRegions) criteria$values                    else qc::default_region_cutoffs(),
-        region_colors      = if (showRegions) .bpcsOverviewRegionColors(criteria) else qc::default_region_colors()
-      )
-
-      if (showRegions)
-        densityPlot <- .bpcsLabelProcessCriteria(densityPlot, criteria)
-
-      # Combined plots need metric colours; facetted plots already name each metric.
-      # Retain the prior/posterior linetype legend in either layout.
-      for (i in seq_along(densityPlot$layers)) {
-        if (inherits(densityPlot$layers[[i]]$geom, "GeomLine"))
-          densityPlot$layers[[i]]$show.legend <- c(colour = singlePanel && length(selectedMetrics) > 1L, linetype = TRUE)
-      }
-
-      # qc only facets (and so only titles the panel with the metric name) when more than one
-      # metric is shown; give a single metric a matching title of its own.
-      metricTitle <- if (length(selectedMetrics) == 1) selectedMetrics else NULL
-
-      jaspPlt$plotObject <- densityPlot +
-        ggplot2::labs(title = metricTitle, fill = gettext("Region"),
-                     caption = if (isPost && options[[paste0(base, "ShowPriorDistribution")]]) priorFit[["error"]]) +
-        jaspGraphs::geom_rangeframe() +
-        jaspGraphs::themeJaspRaw(legend.position = "right") +
-        .bpcsLegendOrder() +
-        ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
-
-    }
+    jaspPlt$plotObject <- jaspGraphs::createJaspPlotRecipe(.bpcsMakeCapabilityPlot, list(
+      metrics         = .bpcsCompactMetrics(summaryObject),
+      priorMetrics    = if (!is.null(priorSummaryObject)) .bpcsCompactMetrics(priorSummaryObject) else NULL,
+      selectedMetrics = selectedMetrics,
+      pointEstimate   = if (options[[paste0(base, "PointEstimate")]]) options[[paste0(base, "PointEstimateType")]] else "none",
+      ci              = if (options[[paste0(base, "Ci")]])            options[[paste0(base, "CiType")]]            else "none",
+      ciMass          = options[[paste0(base, "CiMass")]],
+      ciLower         = options[[paste0(base, "CiLower")]],
+      ciUpper         = options[[paste0(base, "CiUpper")]],
+      singlePanel     = singlePanel,
+      axes            = options[["priorAndPosteriorInferenceAxes"]],
+      axesCustom      = .bpcsGetCustomAxisLimits(options, "priorAndPosteriorInference"),
+      annotationSize  = annotationSize,
+      # only parsed when the regions are shown, so invalid criteria do not break the plot otherwise
+      criteria        = if (options[["priorAndPosteriorInferenceShowProcessCriteria"]]) .bpcsProcessCriteria(options) else NULL,
+      caption         = if (isPost && options[[paste0(base, "ShowPriorDistribution")]]) priorFit[["error"]] else NULL
+    ))
   }, error = function(e) {
     jaspPlt$width  <- 400
     jaspPlt$height <- 400
@@ -1261,6 +1274,53 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     )
   })
 
+}
+
+.bpcsMakeCapabilityPlot <- function(metrics, priorMetrics, selectedMetrics, pointEstimate, ci, ciMass, ciLower, ciUpper,
+                                    singlePanel, axes, axesCustom, annotationSize, criteria, caption) {
+
+  # the regions follow the user's process criteria (qc's defaults are unused while show_regions is FALSE)
+  showRegions <- !is.null(criteria)
+
+  densityPlot <- qc::plot_density(
+    metrics,
+    what               = selectedMetrics,
+    point_estimate     = pointEstimate,
+    ci                 = ci,
+    ci_level           = ciMass,
+    ci_custom_left     = ciLower,
+    ci_custom_right    = ciUpper,
+    single_panel       = singlePanel,
+    axes               = axes,
+    axes_custom        = axesCustom,
+    priorSummaryObject = priorMetrics,
+    textsize           = annotationSize,
+    colorScheme        = if (singlePanel && length(selectedMetrics) > 1L) grDevices::hcl.colors(length(selectedMetrics), "Dark 3") else NULL,
+    show_regions       = showRegions,
+    region_cutoffs     = if (showRegions) criteria$values                    else qc::default_region_cutoffs(),
+    region_colors      = if (showRegions) .bpcsOverviewRegionColors(criteria) else qc::default_region_colors()
+  )
+
+  if (showRegions)
+    densityPlot <- .bpcsLabelProcessCriteria(densityPlot, criteria)
+
+  # Combined plots need metric colours; facetted plots already name each metric.
+  # Retain the prior/posterior linetype legend in either layout.
+  for (i in seq_along(densityPlot$layers)) {
+    if (inherits(densityPlot$layers[[i]]$geom, "GeomLine"))
+      densityPlot$layers[[i]]$show.legend <- c(colour = singlePanel && length(selectedMetrics) > 1L, linetype = TRUE)
+  }
+
+  # qc only facets (and so only titles the panel with the metric name) when more than one
+  # metric is shown; give a single metric a matching title of its own.
+  metricTitle <- if (length(selectedMetrics) == 1L) selectedMetrics else NULL
+
+  densityPlot +
+    ggplot2::labs(title = metricTitle, fill = gettext("Region"), caption = caption) +
+    jaspGraphs::geom_rangeframe() +
+    jaspGraphs::themeJaspRaw(legend.position = "right") +
+    .bpcsLegendOrder() +
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
 }
 
 .bpcsSequentialPointEstimatePlot <- function(jaspResults, dataset, options, fit, position) {
@@ -1296,7 +1356,13 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     plt$setError(sequentialPlotData$error)
   } else {
     tryCatch({
-      plt$plotObject <- .bpcsMakeSequentialPlot(sequentialPlotData$data, options, base)
+      plt$plotObject <- jaspGraphs::createJaspPlotRecipe(.bpcsMakeSequentialPlot, list(
+        estimates = sequentialPlotData$data,
+        options   = .bpcsOptionsStartingWith(options, c("sequentialAnalysis", "statisticsMetrics")),
+        base      = base,
+        custom    = FALSE,
+        criteria  = if (options[["sequentialAnalysisShowProcessCriteria"]]) .bpcsProcessCriteria(options) else NULL
+      ))
     }, error = function(e) {
       plt$setError(gettextf("Unexpected error in Point estimate plot (Sequential Analysis): %s", e$message))
     }
@@ -1329,7 +1395,13 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
     plt$setError(sequentialPlotData$error)
   } else {
     tryCatch({
-      plt$plotObject <- .bpcsMakeSequentialPlot(sequentialPlotData$data, options, base, custom = TRUE)
+      plt$plotObject <- jaspGraphs::createJaspPlotRecipe(.bpcsMakeSequentialPlot, list(
+        estimates = sequentialPlotData$data,
+        options   = .bpcsOptionsStartingWith(options, c("sequentialAnalysis", "statisticsMetrics")),
+        base      = base,
+        custom    = TRUE,
+        criteria  = NULL
+      ))
     }, error = function(e) {
       plt$setError(gettextf("Unexpected error in Interval estimate plot (Sequential Analysis): %s", e$message))
     }
@@ -1337,7 +1409,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   }
 }
 
-# Model fits survive changes to interval presentation; only their summaries are rebuilt.
+# The metrics of the fits survive changes to interval presentation; only their summaries are rebuilt.
 .bpcsGetSequentialAnalysis <- function(jaspResults, dataset, options, fit, custom) {
   if (!.bpcsIsReady(options) || jaspResults$getError()) return()
 
@@ -1375,14 +1447,15 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   jaspBase::startProgressbar(length(nseq), label = gettext("Running sequential analysis"))
   for (i in seq_along(nseq)) {
-    fits[[i]] <- tryCatch(.bpcsFit(x[seq_len(nseq[i])], options, prior = prior), error = function(e) e)
+    # the metrics support all interval queries, so the rest of each fit is not kept
+    fits[[i]] <- tryCatch(
+      .bpcsCompactMetrics(.bpcsFit(x[seq_len(nseq[i])], options, prior = prior)),
+      error = function(e) simpleError(conditionMessage(e))
+    )
     if (inherits(fits[[i]], "error")) {
       nFailed <- nFailed + 1L
       if (is.null(firstError))
         firstError <- list(n = nseq[i], message = .bpcsShortErrorMessage(fits[[i]]))
-    } else {
-      # Metric draws support all interval queries; the full Stan sampler is not needed.
-      fits[[i]]$stanfit <- NULL
     }
     jaspBase::progressbarTick()
   }
@@ -1396,9 +1469,9 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   list(fits = fits, nseq = nseq)
 }
 
-.bpcsSequentialSummary <- function(fit, options, custom) {
+.bpcsSequentialSummary <- function(fittedMetrics, options, custom) {
   metrics <- .bpcsAllMetrics()
-  distributions <- qc:::.coerce_qc_metric_distributions(fit, what = metrics)
+  distributions <- qc:::.coerce_qc_metric_distributions(fittedMetrics, what = metrics)
   data <- data.frame(metric = metrics, mean = NA_real_, median = NA_real_,
                      lower = NA_real_, upper = NA_real_, custom = NA_real_)
   if (custom) {
@@ -1415,11 +1488,11 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   }
   if (options[[paste0(base, "Ci")]]) {
     ciType <- options[[paste0(base, "CiType")]]
-    intervals <- qc:::extract_ci_data(fit, what = metrics, ci = ciType,
+    intervals <- qc:::extract_ci_data(fittedMetrics, what = metrics, ci = ciType,
       ci_level = options[[paste0(base, "CiMass")]],
       ci_custom_left = options[[paste0(base, "CiLower")]],
       ci_custom_right = options[[paste0(base, "CiUpper")]],
-      dfDensity = qc::extract_density_data(fit, what = metrics))$dfCi
+      dfDensity = qc::extract_density_data(fittedMetrics, what = metrics))$dfCi
     order <- match(metrics, intervals$metric)
     data$lower <- intervals$xmin[order]
     data$upper <- intervals$xmax[order]
@@ -1503,7 +1576,7 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
                               sec.axis = rightAxis)
 }
 
-.bpcsMakeSequentialPlot <- function(estimates, options, base, custom = FALSE) {
+.bpcsMakeSequentialPlot <- function(estimates, options, base, custom, criteria) {
 
   singlePanel <- options[["sequentialAnalysisLayout"]] != "multiplePanels"
   axes         <- options[["sequentialAnalysisAxes"]]
@@ -1511,20 +1584,12 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
 
   hasPointEstimate <- custom || options[[paste0(base, "PointEstimate")]]
   pointEstimateName <- if (custom) "custom" else options[[paste0(base, "PointEstimateType")]]
-  showProcessCriteria <- options[["sequentialAnalysisShowProcessCriteria"]]
+  showProcessCriteria <- !is.null(criteria)
 
   selectedMetrics <- .bpcsGetSelectedMetrics(options)
-  if (length(selectedMetrics) == 0L)
-    return(NULL)
-
   hasCi <- !custom && options[[paste0(base, "Ci")]]
-  if (!hasPointEstimate && !hasCi)
-    return(NULL)
 
   if (custom) {
-    hasCi <- FALSE
-    pointEstimateName <- "custom"
-    showProcessCriteria <- FALSE
     yTitle <- gettextf("P(%1$.3f \u2264 %2$s \u2264 %3$.3f)",
                        options[["sequentialAnalysisIntervalEstimatePlotIntervalLower"]],
                        if (length(selectedMetrics) == 1L) selectedMetrics else gettext("Metric"),
@@ -1545,7 +1610,6 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
       )
     }
 
-    criteria <- if (showProcessCriteria) .bpcsProcessCriteria(options)
     categoryNames <- if (showProcessCriteria) criteria$labels else character()
     gridLines <- if (showProcessCriteria) criteria$values else numeric()
   }
@@ -1683,7 +1747,11 @@ bayesianProcessCapabilityStudies <- function(jaspResults, dataset, options) {
   tryCatch({
     predictive <- .bpcsPredictiveSamples(jaspResults, dataset, options, fit, base)
     if (!is.null(predictive$error)) stop(predictive$error, call. = FALSE)
-    plot$plotObject <- .bpcsMakePredictivePlot(predictive$samples, options, base)
+    plot$plotObject <- jaspGraphs::createJaspPlotRecipe(.bpcsMakePredictivePlot, list(
+      predictiveSamples = predictive$samples,
+      options           = .bpcsOptionsStartingWith(options, base),
+      base              = base
+    ))
   }, error = function(e) {
     plot$setError(
       if (isPrior) gettextf("Unexpected error in Prior predictive distribution: %s", e$message)
